@@ -98,14 +98,7 @@ static uint8_t g_heartbeat_seq = 0;
 static uint32_t g_last_master_heartbeat_ms = 0;
 static bool g_master_heartbeat_received = false;  // Set to true on first heartbeat
 
-// Stall detection (SAFE-001)
-static float g_stall_start_angle = 0.0f;
-static uint32_t g_stall_start_time_ms = 0;
-static bool g_stall_monitoring = false;
-
-// Drive timeout protection (SAFE-002)
-static uint32_t g_motor_run_start_ms = 0;
-static bool g_motor_timeout_monitoring = false;
+// Safety features removed for debugging
 
 /*============================================================================
  * Task Handles
@@ -272,6 +265,8 @@ bool rudder_engage(void) {
             .calibration_valid = g_calibration_valid,
             .no_active_faults = (g_state_machine.fault_code == 0)
         };
+        // Reset command timestamp to prevent immediate timeout fault
+        g_last_command_time_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
         state_machine_process(&g_state_machine, EVENT_ENGAGE, &pre);
         return state_machine_get_state(&g_state_machine) == STATE_ENGAGED;
     }
@@ -416,10 +411,6 @@ static void motor_stop(void) {
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
     g_motor_running = false;
     g_motor_direction = 0;
-
-    // Reset safety monitoring
-    g_stall_monitoring = false;
-    g_motor_timeout_monitoring = false;
 }
 
 static void motor_drive(int speed_percent, int direction) {
@@ -484,7 +475,10 @@ static void espnow_message_handler(uint8_t msg_type, const uint8_t *data,
                         .calibration_valid = g_calibration_valid,
                         .no_active_faults = (g_state_machine.fault_code == 0)
                     };
+                    // Reset command timestamp to prevent immediate timeout fault
+                    g_last_command_time_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
                     state_machine_process(&g_state_machine, EVENT_ENGAGE, &pre);
+                    ESP_LOGI(TAG, "ENGAGE command received via ESP-NOW");
                     break;
                 }
                 case SYS_CMD_DISENGAGE:
@@ -602,20 +596,6 @@ static void task_espnow(void *pvParameters) {
             last_heartbeat = xTaskGetTickCount();
         }
 
-        // Check master heartbeat timeout
-        if (g_master_heartbeat_received) {
-            uint32_t now_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
-            uint32_t heartbeat_age_ms = now_ms - g_last_master_heartbeat_ms;
-
-            if (heartbeat_age_ms > HEARTBEAT_TIMEOUT_MS) {
-                if (state_machine_get_state(&g_state_machine) != STATE_FAULTED) {
-                    ESP_LOGE(TAG, "Master heartbeat lost! Age: %lu ms", heartbeat_age_ms);
-                    motor_stop();
-                    state_machine_set_fault(&g_state_machine, ERR_HEARTBEAT_LOST);
-                }
-            }
-        }
-
         // ESP-NOW receive is handled via callback, just yield here
         vTaskDelay(pdMS_TO_TICKS(5));
     }
@@ -648,19 +628,6 @@ static void task_rudder(void *pvParameters) {
             }
         }
 
-        // Check command timeout
-        uint32_t now_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
-        uint32_t cmd_age_ms = now_ms - g_last_command_time_ms;
-
-        if (cmd_age_ms > COMMAND_LOSS_FAULT_MS) {
-            motor_stop();
-            if (state_machine_get_state(&g_state_machine) == STATE_ENGAGED) {
-                state_machine_set_fault(&g_state_machine, ERR_ESPNOW_RX_TIMEOUT);
-            }
-        } else if (cmd_age_ms > COMMAND_TIMEOUT_MS) {
-            g_commanded_angle = 0.0f;
-        }
-
         // Servo control
         if (state_machine_get_state(&g_state_machine) == STATE_ENGAGED) {
             float error = g_commanded_angle - g_actual_angle;
@@ -690,51 +657,10 @@ static void task_rudder(void *pvParameters) {
                 int speed_percent = (int)fabsf(speed);
                 int direction = signf(error);
                 motor_drive(speed_percent, direction);
-
-                // Start/update stall and drive timeout monitoring
-                uint32_t now_ms = xTaskGetTickCount() * portTICK_PERIOD_MS;
-
-                if (!g_motor_timeout_monitoring) {
-                    g_motor_run_start_ms = now_ms;
-                    g_motor_timeout_monitoring = true;
-                } else {
-                    if ((now_ms - g_motor_run_start_ms) > DRIVE_TIMEOUT_MS) {
-                        ESP_LOGE(TAG, "Motor drive timeout! Running for %lu ms",
-                                 now_ms - g_motor_run_start_ms);
-                        motor_stop();
-                        state_machine_set_fault(&g_state_machine, ERR_MOTOR_TIMEOUT);
-                    }
-                }
-
-                if (!g_stall_monitoring) {
-                    g_stall_start_angle = g_actual_angle;
-                    g_stall_start_time_ms = now_ms;
-                    g_stall_monitoring = true;
-                } else {
-                    float angle_delta = fabsf(g_actual_angle - g_stall_start_angle);
-                    uint32_t stall_duration_ms = now_ms - g_stall_start_time_ms;
-
-                    if (stall_duration_ms > STALL_TIMEOUT_MS) {
-                        if (angle_delta < STALL_MIN_DELTA_DEG) {
-                            ESP_LOGE(TAG, "Motor stall detected! Moved only %.2f deg in %lu ms",
-                                     angle_delta, stall_duration_ms);
-                            motor_stop();
-                            state_machine_set_fault(&g_state_machine, ERR_MOTOR_STALL);
-                        } else {
-                            g_stall_start_angle = g_actual_angle;
-                            g_stall_start_time_ms = now_ms;
-                        }
-                    }
-                }
-            } else {
-                g_stall_monitoring = false;
-                g_motor_timeout_monitoring = false;
             }
         } else {
             motor_stop();
             last_speed = 0.0f;
-            g_stall_monitoring = false;
-            g_motor_timeout_monitoring = false;
         }
 
         vTaskDelayUntil(&last_wake, period);
