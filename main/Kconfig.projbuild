@@ -31,7 +31,7 @@ menu "TestAPEN Configuration"
     menu "ESP-NOW Configuration"
         config ESPNOW_MASTER_MAC
             string "Master Node MAC Address"
-            default "AA:BB:CC:DD:EE:01"
+            default "78:42:1C:6C:FA:58"
             help
                 MAC address of the Master node for ESP-NOW peer.
                 Format: XX:XX:XX:XX:XX:XX (uppercase hex).
@@ -39,14 +39,14 @@ menu "TestAPEN Configuration"
 
         config ESPNOW_RUDDER_MAC
             string "Rudder Node MAC Address"
-            default "AA:BB:CC:DD:EE:02"
+            default "78:42:1C:6D:28:94"
             help
                 MAC address of the Rudder node for ESP-NOW peer.
                 Format: XX:XX:XX:XX:XX:XX (uppercase hex).
 
         config ESPNOW_UI_MAC
             string "UI Node MAC Address"
-            default "AA:BB:CC:DD:EE:03"
+            default "78:42:1C:6B:E5:F0"
             help
                 MAC address of the UI node for ESP-NOW peer.
                 Format: XX:XX:XX:XX:XX:XX (uppercase hex).

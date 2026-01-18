@@ -1,3 +1,6 @@
+# BLE Manager component
+# Always register with full dependencies - source file only compiled when BT enabled
+
 idf_component_register(
     SRCS
         "ble_manager.c"
