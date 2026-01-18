@@ -1,4 +1,4 @@
-menu "TestAP2 Configuration"
+menu "TestAPEN Configuration"
 
     choice TESTAP2_NODE_TYPE
         prompt "Node Type"
@@ -7,7 +7,7 @@ menu "TestAP2 Configuration"
             Select which node type to build.
             Master Node: IMU, GNSS, Display, BLE, Autopilot control
             Rudder Node: Encoder, Motor driver, Servo control
-            UI Node: e-Paper display, Button input, CAN listener
+            UI Node: e-Paper display, Button input, ESP-NOW listener
 
         config TESTAP2_NODE_MASTER
             bool "Master Node"
@@ -25,20 +25,41 @@ menu "TestAP2 Configuration"
             bool "UI Node"
             help
                 Build firmware for the UI Node.
-                Includes: e-Paper display, Button input, CAN listener.
+                Includes: e-Paper display, Button input, ESP-NOW listener.
     endchoice
 
-    config TESTAP2_CAN_TX_GPIO
-        int "CAN TX GPIO"
-        default 5
-        help
-            GPIO pin for CAN transmit.
+    menu "ESP-NOW Configuration"
+        config ESPNOW_MASTER_MAC
+            string "Master Node MAC Address"
+            default "AA:BB:CC:DD:EE:01"
+            help
+                MAC address of the Master node for ESP-NOW peer.
+                Format: XX:XX:XX:XX:XX:XX (uppercase hex).
+                Use 'status' command or esptool.py read_mac to find actual MAC.
 
-    config TESTAP2_CAN_RX_GPIO
-        int "CAN RX GPIO"
-        default 4
-        help
-            GPIO pin for CAN receive.
+        config ESPNOW_RUDDER_MAC
+            string "Rudder Node MAC Address"
+            default "AA:BB:CC:DD:EE:02"
+            help
+                MAC address of the Rudder node for ESP-NOW peer.
+                Format: XX:XX:XX:XX:XX:XX (uppercase hex).
+
+        config ESPNOW_UI_MAC
+            string "UI Node MAC Address"
+            default "AA:BB:CC:DD:EE:03"
+            help
+                MAC address of the UI node for ESP-NOW peer.
+                Format: XX:XX:XX:XX:XX:XX (uppercase hex).
+
+        config ESPNOW_CHANNEL
+            int "WiFi Channel for ESP-NOW"
+            default 0
+            range 0 13
+            help
+                WiFi channel for ESP-NOW. Must match across all nodes.
+                Set to 0 to use WiFi station's channel (if connected to AP).
+                If not connected to AP, channel 1 will be used.
+    endmenu
 
     config TESTAP2_I2C_SDA_GPIO
         int "I2C SDA GPIO"
@@ -177,7 +198,7 @@ menu "TestAP2 Configuration"
     endmenu
 
     menu "Network Configuration"
-        # Available for both Master and Rudder nodes
+        # Available for all nodes
 
         config TESTAP2_WIFI_SSID
             string "WiFi SSID"

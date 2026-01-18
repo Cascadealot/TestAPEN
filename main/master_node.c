@@ -1,11 +1,12 @@
 /**
  * @file master_node.c
- * @brief Master Node Implementation for TestAP2
+ * @brief Master Node Implementation for TestAPEN
  *
  * FSD Reference: TestAP2.FSD.v1.0.0.md Section 6.2
+ * Modified for ESP-NOW communication instead of CAN bus.
  *
  * Master Node Tasks:
- * - Task_CAN: CAN message handling (Priority 5)
+ * - Task_ESPNOW: ESP-NOW message handling (Priority 5)
  * - Task_IMU: IMU reading and heading computation (Priority 4, 50Hz)
  * - Task_Autopilot: Heading control (Priority 3, 10Hz)
  * - Task_Display: OLED display update (Priority 2, 5Hz)
@@ -23,7 +24,7 @@
 #include "driver/uart.h"
 
 #include "autopilot_common.h"
-#include "can_protocol.h"
+#include "espnow_protocol.h"
 #include "state_machine.h"
 #include "icm20948.h"
 #include "ssd1306.h"
@@ -38,7 +39,7 @@
 static const char *TAG = "MASTER";
 
 // Version
-#define FIRMWARE_VERSION "1.1.0"
+#define FIRMWARE_VERSION "1.1.0-espnow"
 
 /*============================================================================
  * Global State
@@ -59,7 +60,7 @@ static uint8_t g_command_seq = 0;
  * Task Handles
  *============================================================================*/
 
-static TaskHandle_t h_task_can = NULL;
+static TaskHandle_t h_task_espnow = NULL;
 static TaskHandle_t h_task_imu = NULL;
 static TaskHandle_t h_task_gnss = NULL;
 static TaskHandle_t h_task_autopilot = NULL;
@@ -335,17 +336,22 @@ const char* master_get_version(void) {
 }
 
 /*============================================================================
- * Calibration Commands (Master -> Rudder via CAN)
+ * Calibration Commands (Master -> Rudder via ESP-NOW)
  *============================================================================*/
 
 /**
- * @brief Send calibration command to Rudder node via CAN
+ * @brief Send calibration command to Rudder node via ESP-NOW
  */
 static void send_calibration_cmd(uint8_t cal_cmd) {
-    uint8_t data[8] = {cal_cmd, 0, 0, 0, 0, 0, 0, 0};
-    esp_err_t err = can_send(CAN_ID_CALIBRATION_CMD, data, 8, 10);
+    espnow_calibration_command_t cmd = {
+        .command = cal_cmd,
+        .reserved = {0}
+    };
+
+    esp_err_t err = espnow_send(MSG_CALIBRATION_CMD, (uint8_t*)&cmd, sizeof(cmd),
+                                 espnow_get_rudder_mac());
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to send cal cmd 0x%02X via CAN", cal_cmd);
+        ESP_LOGW(TAG, "Failed to send cal cmd 0x%02X via ESP-NOW", cal_cmd);
     } else {
         ESP_LOGI(TAG, "Sent calibration cmd: 0x%02X", cal_cmd);
     }
@@ -384,26 +390,27 @@ bool master_calibrate_save(void) {
 }
 
 /*============================================================================
- * Parameter Sync (Master -> Rudder via CAN)
+ * Parameter Sync (Master -> Rudder via ESP-NOW)
  *============================================================================*/
 
 /**
- * @brief Send parameter update to Rudder node via CAN
+ * @brief Send parameter update to Rudder node via ESP-NOW
  */
 static void master_send_param_to_rudder(param_id_t id, float value, bool save_nvs) {
-    can_param_config_t cfg = {
+    espnow_param_config_t cfg = {
         .param_id = (uint8_t)id,
         .flags = save_nvs ? PARAM_FLAG_SAVE_NVS : 0,
         .value = value,
         .reserved = 0
     };
 
-    esp_err_t err = can_send(CAN_ID_PARAM_CONFIG, (uint8_t *)&cfg, sizeof(cfg), 10);
+    esp_err_t err = espnow_send(MSG_PARAM_CONFIG, (uint8_t*)&cfg, sizeof(cfg),
+                                 espnow_get_rudder_mac());
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "Failed to send param %d via CAN", id);
+        ESP_LOGW(TAG, "Failed to send param %d via ESP-NOW", id);
     } else {
         const param_meta_t *meta = param_get_meta(id);
-        ESP_LOGI(TAG, "Sent param via CAN: %s = %.3f",
+        ESP_LOGI(TAG, "Sent param via ESP-NOW: %s = %.3f",
                  meta ? meta->name : "?", value);
     }
 }
@@ -411,10 +418,10 @@ static void master_send_param_to_rudder(param_id_t id, float value, bool save_nv
 /**
  * @brief Callback when any parameter changes
  *
- * If the parameter belongs to Rudder node, forward via CAN.
+ * If the parameter belongs to Rudder node, forward via ESP-NOW.
  */
 static void on_param_change(param_id_t id, float value) {
-    // If this is a Rudder parameter (not a Master parameter), send via CAN
+    // If this is a Rudder parameter (not a Master parameter), send via ESP-NOW
     const param_meta_t *meta = param_get_meta(id);
     if (meta && !meta->is_master_param) {
         // This is a Rudder parameter - forward to Rudder node
@@ -423,18 +430,77 @@ static void on_param_change(param_id_t id, float value) {
 }
 
 /*============================================================================
- * Task: CAN Message Handler
+ * ESP-NOW Receive Callback
  *============================================================================*/
 
-static void task_can(void *pvParameters) {
-    ESP_LOGI(TAG, "Task_CAN started");
-    twai_message_t msg;
+static void espnow_message_handler(uint8_t msg_type, const uint8_t *data,
+                                    size_t len, const uint8_t *src_mac) {
+    char mac_str[18];
+    espnow_mac_to_str(src_mac, mac_str);
+
+    switch (msg_type) {
+        case MSG_RUDDER_HEARTBEAT:
+            // Process rudder heartbeat
+            ESP_LOGD(TAG, "Rudder heartbeat from %s", mac_str);
+            break;
+
+        case MSG_E_STOP:
+            ESP_LOGW(TAG, "E_STOP received from %s!", mac_str);
+            state_machine_set_fault(&g_state_machine, ERR_UNKNOWN);
+            break;
+
+        case MSG_UI_COMMAND: {
+            // Process UI command from UiNode
+            if (len < sizeof(espnow_ui_command_t)) {
+                ESP_LOGW(TAG, "UI command too short: %d bytes", (int)len);
+                break;
+            }
+            const espnow_ui_command_t *cmd = (const espnow_ui_command_t *)data;
+            int16_t value = be_to_int16((const uint8_t*)&cmd->value_x10);
+
+            ESP_LOGI(TAG, "UI command from %s: cmd=%d value=%d seq=%d",
+                     mac_str, cmd->command, value, cmd->sequence);
+
+            switch (cmd->command) {
+                case UI_CMD_ENGAGE:
+                    master_engage();
+                    break;
+                case UI_CMD_DISENGAGE:
+                    master_disengage();
+                    break;
+                case UI_CMD_HEADING_ADJUST:
+                    // value is degrees * 10
+                    master_adjust_target_heading(value / 10.0f);
+                    break;
+                case UI_CMD_HEADING_SET:
+                    // value is degrees * 10
+                    master_set_target_heading(value / 10.0f);
+                    break;
+                default:
+                    ESP_LOGW(TAG, "Unknown UI command: %d", cmd->command);
+                    break;
+            }
+            break;
+        }
+
+        default:
+            ESP_LOGD(TAG, "Unknown message type 0x%02X from %s", msg_type, mac_str);
+            break;
+    }
+}
+
+/*============================================================================
+ * Task: ESP-NOW Message Handler
+ *============================================================================*/
+
+static void task_espnow(void *pvParameters) {
+    ESP_LOGI(TAG, "Task_ESPNOW started");
     TickType_t last_heartbeat = xTaskGetTickCount();
 
     while (1) {
         // Send heartbeat at 10 Hz (100ms interval)
         if ((xTaskGetTickCount() - last_heartbeat) >= pdMS_TO_TICKS(MASTER_HEARTBEAT_INTERVAL_MS)) {
-            can_master_heartbeat_t hb = {
+            espnow_master_heartbeat_t hb = {
                 .state = (uint8_t)state_machine_get_state(&g_state_machine),
                 .fault_code = g_state_machine.fault_code,
                 .sequence = g_heartbeat_seq++,
@@ -447,61 +513,20 @@ static void task_can(void *pvParameters) {
             int16_to_be((int16_t)(filtered * 10), (uint8_t*)&hb.heading_x10);
             int16_to_be((int16_t)(g_target_heading * 10), (uint8_t*)&hb.target_x10);
 
-            esp_err_t send_err = can_send(CAN_ID_MASTER_HEARTBEAT, (uint8_t*)&hb, sizeof(hb), 10);
-            if (send_err != ESP_OK) {
-                ESP_LOGE(TAG, "CAN send failed: %s", esp_err_to_name(send_err));
+            // Set flags
+            if (g_gnss_available && gnss_has_fix()) {
+                hb.flags |= FLAG_GNSS_VALID;
+            }
+
+            // Broadcast heartbeat to all nodes
+            esp_err_t err = espnow_send(MSG_MASTER_HEARTBEAT, (uint8_t*)&hb, sizeof(hb), NULL);
+            if (err != ESP_OK) {
+                ESP_LOGE(TAG, "ESP-NOW send failed: %s", esp_err_to_name(err));
             }
             last_heartbeat = xTaskGetTickCount();
         }
 
-        // Receive messages (non-blocking)
-        if (can_receive(&msg, 10) == ESP_OK) {
-            switch (msg.identifier) {
-                case CAN_ID_RUDDER_HEARTBEAT:
-                    // Process rudder heartbeat
-                    ESP_LOGD(TAG, "Rudder heartbeat received");
-                    break;
-
-                case CAN_ID_E_STOP:
-                    ESP_LOGW(TAG, "E_STOP received!");
-                    state_machine_set_fault(&g_state_machine, ERR_UNKNOWN);
-                    break;
-
-                case CAN_ID_UI_COMMAND: {
-                    // Process UI command from UiNode
-                    uint8_t cmd = msg.data[0];
-                    int16_t value = be_to_int16(&msg.data[1]);
-                    uint8_t seq = msg.data[3];
-
-                    ESP_LOGI(TAG, "UI command: cmd=%d value=%d seq=%d", cmd, value, seq);
-
-                    switch (cmd) {
-                        case UI_CMD_ENGAGE:
-                            master_engage();
-                            break;
-                        case UI_CMD_DISENGAGE:
-                            master_disengage();
-                            break;
-                        case UI_CMD_HEADING_ADJUST:
-                            // value is degrees * 10
-                            master_adjust_target_heading(value / 10.0f);
-                            break;
-                        case UI_CMD_HEADING_SET:
-                            // value is degrees * 10
-                            master_set_target_heading(value / 10.0f);
-                            break;
-                        default:
-                            ESP_LOGW(TAG, "Unknown UI command: %d", cmd);
-                            break;
-                    }
-                    break;
-                }
-
-                default:
-                    break;
-            }
-        }
-
+        // ESP-NOW receive is handled via callback, just yield here
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -586,13 +611,15 @@ static void task_autopilot(void *pvParameters) {
             float rudder_cmd = P + integral + D;
             rudder_cmd = clampf(rudder_cmd, -RUDDER_CMD_MAX, RUDDER_CMD_MAX);
 
-            // Send rudder command
-            can_rudder_command_t cmd = {
+            // Send rudder command via ESP-NOW
+            espnow_rudder_command_t cmd = {
                 .flags = 0,
-                .sequence = g_command_seq++
+                .sequence = g_command_seq++,
+                .reserved = 0
             };
             int16_to_be((int16_t)(rudder_cmd * 10), (uint8_t*)&cmd.cmd_angle_x10);
-            can_send(CAN_ID_RUDDER_COMMAND, (uint8_t*)&cmd, sizeof(cmd), 10);
+            espnow_send(MSG_RUDDER_COMMAND, (uint8_t*)&cmd, sizeof(cmd),
+                        espnow_get_rudder_mac());
 
             ESP_LOGD(TAG, "Autopilot: error=%.1f, cmd=%.1f", error, rudder_cmd);
         } else {
@@ -712,7 +739,7 @@ static void boot_status(int line, const char *fmt, ...) {
 
 void master_node_init(void) {
     ESP_LOGI(TAG, "========================================");
-    ESP_LOGI(TAG, "  TestAP2 Master Node");
+    ESP_LOGI(TAG, "  TestAPEN Master Node");
     ESP_LOGI(TAG, "  Version: %s", FIRMWARE_VERSION);
     ESP_LOGI(TAG, "========================================");
 
@@ -740,7 +767,7 @@ void master_node_init(void) {
     if (disp_err == ESP_OK) {
         g_display_available = true;
         ssd1306_clear();
-        ssd1306_printf(0, "TestAP2 Master");
+        ssd1306_printf(0, "TestAPEN Master");
         ssd1306_printf(1, "v%s", FIRMWARE_VERSION);
         ssd1306_printf(2, "Booting...");
         ssd1306_update();
@@ -762,7 +789,7 @@ void master_node_init(void) {
     } else {
         boot_status(2, "Params: OK");
         ESP_LOGI(TAG, "Parameter store initialized");
-        // Register callback to sync Rudder params via CAN
+        // Register callback to sync Rudder params via ESP-NOW
         param_set_change_callback(on_param_change);
     }
 
@@ -771,7 +798,7 @@ void master_node_init(void) {
     esp_err_t net_err = network_manager_init(
         CONFIG_TESTAP2_WIFI_SSID,
         CONFIG_TESTAP2_WIFI_PASSWORD,
-        "testap2-master",
+        "testapen-master",
         CONFIG_TESTAP2_DEBUG_PORT
     );
     if (net_err != ESP_OK) {
@@ -801,11 +828,17 @@ void master_node_init(void) {
         icm20948_load_mag_cal_from_nvs();
     }
 
-    // ========== PHASE 5: CAN Bus ==========
-    // CAN already initialized in main.c
-    boot_status(3, "CAN: OK");
-    ESP_LOGI(TAG, "CAN initialized in main.c (TX=%d, RX=%d)",
-             CONFIG_TESTAP2_CAN_TX_GPIO, CONFIG_TESTAP2_CAN_RX_GPIO);
+    // ========== PHASE 5: ESP-NOW ==========
+    boot_status(3, "ESP-NOW...");
+    if (espnow_init() != ESP_OK) {
+        boot_status(3, "ESP-NOW: FAIL");
+        ESP_LOGE(TAG, "ESP-NOW initialization failed!");
+    } else {
+        boot_status(3, "ESP-NOW: OK");
+        ESP_LOGI(TAG, "ESP-NOW initialized");
+        // Register receive callback
+        espnow_register_recv_callback(espnow_message_handler);
+    }
 
     // ========== PHASE 5.3: GNSS ==========
     boot_status(3, "GNSS...");
@@ -827,13 +860,13 @@ void master_node_init(void) {
         ESP_LOGW(TAG, "BLE initialization failed (continuing without BLE)");
     } else {
         boot_status(3, "BLE: OK");
-        ESP_LOGI(TAG, "BLE initialized - advertising as 'TestAP2'");
+        ESP_LOGI(TAG, "BLE initialized - advertising as 'TestAPEN'");
     }
 
     // ========== PHASE 6: Summary Screen ==========
     if (g_display_available) {
         ssd1306_clear();
-        ssd1306_printf(0, "TestAP2 Master");
+        ssd1306_printf(0, "TestAPEN Master");
         ssd1306_printf(1, "All systems OK");
         char ip[16];
         network_manager_get_ip(ip, sizeof(ip));
@@ -844,8 +877,8 @@ void master_node_init(void) {
     }
 
     // ========== PHASE 7: Create Tasks ==========
-    xTaskCreate(task_can, "Task_CAN", TASK_CAN_STACK_SIZE,
-                NULL, TASK_CAN_PRIORITY, &h_task_can);
+    xTaskCreate(task_espnow, "Task_ESPNOW", TASK_CAN_STACK_SIZE,
+                NULL, TASK_CAN_PRIORITY, &h_task_espnow);
 
     xTaskCreate(task_imu, "Task_IMU", TASK_IMU_STACK_SIZE,
                 NULL, TASK_IMU_PRIORITY, &h_task_imu);

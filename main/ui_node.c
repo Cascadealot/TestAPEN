@@ -1,11 +1,12 @@
 /**
  * @file ui_node.c
- * @brief UI Node Implementation for TestAP2
+ * @brief UI Node Implementation for TestAPEN
  *
  * FSD Reference: TestAP2.FSD.v1.0.0.md Section 6.4 (TBD)
+ * Modified for ESP-NOW communication instead of CAN bus.
  *
  * UI Node Tasks:
- * - Task_CAN: CAN message handling, heartbeat receive (Priority 5, 50Hz)
+ * - Task_ESPNOW: ESP-NOW message handling, heartbeat receive (Priority 5, 50Hz)
  * - Task_Buttons: Button input with debouncing (Priority 4, 50Hz)
  * - Task_Display: e-Paper display updates (Priority 2, variable rate)
  * - Task_Network: WiFi/OTA/Console support (Priority 1, 10Hz)
@@ -22,7 +23,7 @@
 #include "esp_timer.h"
 
 #include "autopilot_common.h"
-#include "can_protocol.h"
+#include "espnow_protocol.h"
 #include "state_machine.h"
 #include "network_manager.h"
 #include "cmd_console.h"
@@ -32,6 +33,9 @@
 #ifdef CONFIG_TESTAP2_NODE_UI
 
 static const char *TAG = "UI";
+
+// Version
+#define FIRMWARE_VERSION "1.1.0-espnow"
 
 /*============================================================================
  * Button Definitions
@@ -101,13 +105,13 @@ typedef enum {
 
 static display_page_t g_current_page = PAGE_AUTOPILOT;
 static bool g_display_needs_update = true;
-static uint32_t g_last_full_refresh_ms __attribute__((unused)) = 0;  // For e-Paper full refresh timing
+static uint32_t g_last_full_refresh_ms __attribute__((unused)) = 0;
 
 #define PARTIAL_REFRESH_MS      2000    // Partial refresh every 2 seconds
 #define FULL_REFRESH_MS         60000   // Full refresh every 60 seconds
 
 /*============================================================================
- * CAN Command State
+ * ESP-NOW Command State
  *============================================================================*/
 
 static uint8_t g_ui_cmd_sequence = 0;
@@ -116,7 +120,7 @@ static uint8_t g_ui_cmd_sequence = 0;
  * Task Handles
  *============================================================================*/
 
-static TaskHandle_t h_task_can = NULL;
+static TaskHandle_t h_task_espnow = NULL;
 static TaskHandle_t h_task_buttons = NULL;
 static TaskHandle_t h_task_display = NULL;
 static TaskHandle_t h_task_network = NULL;
@@ -125,7 +129,7 @@ static TaskHandle_t h_task_network = NULL;
  * Forward Declarations
  *============================================================================*/
 
-static void task_can(void *pvParameters);
+static void task_espnow(void *pvParameters);
 static void task_buttons(void *pvParameters);
 static void task_display(void *pvParameters);
 static void task_network(void *pvParameters);
@@ -140,7 +144,6 @@ static void process_button_action(button_id_t btn, bool long_press);
  * @brief Initialize button GPIOs
  */
 static void buttons_init(void) {
-    // Configure button GPIOs
     const gpio_num_t button_gpios[BTN_COUNT] = {
         CONFIG_TESTAP2_BTN_DEC10_GPIO,
         CONFIG_TESTAP2_BTN_DEC1_GPIO,
@@ -167,7 +170,6 @@ static void buttons_init(void) {
         };
 
         // Note: GPIO 34-39 don't have internal pull-ups
-        // They need external pull-ups on the hardware
         if (button_gpios[i] >= 34) {
             io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
         }
@@ -179,7 +181,6 @@ static void buttons_init(void) {
 
 /**
  * @brief Read and debounce a button
- * @return true if button state changed
  */
 static bool button_update(button_id_t btn) {
     bool current = (gpio_get_level(g_buttons[btn].gpio) == 0);  // Active low
@@ -212,14 +213,11 @@ static bool button_update(button_id_t btn) {
         uint32_t held_time = now - g_buttons[btn].press_start_ms;
 
         if (held_time >= LONG_PRESS_MS) {
-            // Long press detected
             if (!g_buttons[btn].long_press_active) {
-                // First long press trigger
                 g_buttons[btn].long_press_active = true;
                 g_buttons[btn].last_action_ms = now;
                 process_button_action(btn, true);
             } else if (now - g_buttons[btn].last_action_ms >= REPEAT_RATE_MS) {
-                // Repeat action
                 g_buttons[btn].last_action_ms = now;
                 process_button_action(btn, true);
             }
@@ -238,17 +236,14 @@ static void process_button_action(button_id_t btn, bool long_press) {
 
     switch (btn) {
         case BTN_DEC10:
-            // Decrease heading by 10 degrees
             send_ui_command(UI_CMD_HEADING_ADJUST, -100);  // -10.0 * 10
             break;
 
         case BTN_DEC1:
-            // Decrease heading by 1 degree
             send_ui_command(UI_CMD_HEADING_ADJUST, -10);   // -1.0 * 10
             break;
 
         case BTN_ENGAGE:
-            // Toggle engage/disengage (only on short press)
             if (!long_press) {
                 if (g_master_status.state == STATE_ENGAGED) {
                     send_ui_command(UI_CMD_DISENGAGE, 0);
@@ -259,7 +254,6 @@ static void process_button_action(button_id_t btn, bool long_press) {
             break;
 
         case BTN_MODE:
-            // Cycle display page (only on short press)
             if (!long_press) {
                 g_current_page = (g_current_page + 1) % PAGE_COUNT;
                 ESP_LOGI(TAG, "Switched to page %d", g_current_page);
@@ -267,12 +261,10 @@ static void process_button_action(button_id_t btn, bool long_press) {
             break;
 
         case BTN_INC1:
-            // Increase heading by 1 degree
             send_ui_command(UI_CMD_HEADING_ADJUST, 10);    // +1.0 * 10
             break;
 
         case BTN_INC10:
-            // Increase heading by 10 degrees
             send_ui_command(UI_CMD_HEADING_ADJUST, 100);   // +10.0 * 10
             break;
 
@@ -282,20 +274,22 @@ static void process_button_action(button_id_t btn, bool long_press) {
 }
 
 /*============================================================================
- * CAN Functions
+ * ESP-NOW Functions
  *============================================================================*/
 
 /**
- * @brief Send UI command to Master via CAN
+ * @brief Send UI command to Master via ESP-NOW
  */
 static void send_ui_command(uint8_t cmd, int16_t value) {
-    uint8_t data[8] = {0};
+    espnow_ui_command_t ui_cmd = {
+        .command = cmd,
+        .sequence = g_ui_cmd_sequence++,
+        .reserved = 0
+    };
+    int16_to_be(value, (uint8_t*)&ui_cmd.value_x10);
 
-    data[0] = cmd;
-    int16_to_be(value, &data[1]);
-    data[3] = g_ui_cmd_sequence++;
-
-    esp_err_t err = can_send(CAN_ID_UI_COMMAND, data, 8, 10);
+    esp_err_t err = espnow_send(MSG_UI_COMMAND, (uint8_t*)&ui_cmd, sizeof(ui_cmd),
+                                 espnow_get_master_mac());
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Failed to send UI command: %s", esp_err_to_name(err));
     } else {
@@ -304,36 +298,39 @@ static void send_ui_command(uint8_t cmd, int16_t value) {
 }
 
 /**
- * @brief Process received CAN messages
+ * @brief ESP-NOW receive callback
  */
-static void process_can_message(const twai_message_t *msg) {
+static void espnow_message_handler(uint8_t msg_type, const uint8_t *data,
+                                    size_t len, const uint8_t *src_mac) {
     uint32_t now = esp_log_timestamp();
 
-    switch (msg->identifier) {
-        case CAN_ID_MASTER_HEARTBEAT: {
-            // Parse Master heartbeat
+    switch (msg_type) {
+        case MSG_MASTER_HEARTBEAT: {
+            if (len < sizeof(espnow_master_heartbeat_t)) break;
+            const espnow_master_heartbeat_t *hb = (const espnow_master_heartbeat_t *)data;
+
             g_master_status.last_heartbeat_ms = now;
             g_master_status.connected = true;
-            g_master_status.state = msg->data[0];
-            g_master_status.fault_code = msg->data[1];
-            g_heading = be_to_int16(&msg->data[2]) / 10.0f;
-            g_target_heading = be_to_int16(&msg->data[4]) / 10.0f;
-            g_master_flags = msg->data[7];
+            g_master_status.state = hb->state;
+            g_master_status.fault_code = hb->fault_code;
+            g_heading = be_to_int16((const uint8_t*)&hb->heading_x10) / 10.0f;
+            g_target_heading = be_to_int16((const uint8_t*)&hb->target_x10) / 10.0f;
+            g_master_flags = hb->flags;
             break;
         }
 
-        case CAN_ID_RUDDER_HEARTBEAT: {
-            // Parse Rudder heartbeat
+        case MSG_RUDDER_HEARTBEAT: {
+            if (len < sizeof(espnow_rudder_heartbeat_t)) break;
+            const espnow_rudder_heartbeat_t *hb = (const espnow_rudder_heartbeat_t *)data;
+
             g_rudder_status.last_heartbeat_ms = now;
             g_rudder_status.connected = true;
-            g_rudder_status.state = msg->data[0];
-            g_rudder_status.fault_code = msg->data[1];
-            g_rudder_angle = be_to_int16(&msg->data[2]) / 10.0f;
-            g_motor_status = msg->data[4];
+            g_rudder_status.state = hb->state;
+            g_rudder_status.fault_code = hb->fault_code;
+            g_rudder_angle = be_to_int16((const uint8_t*)&hb->angle_x10) / 10.0f;
+            g_motor_status = hb->motor_status;
             break;
         }
-
-        // TODO: Handle CAN_ID_GNSS_POSITION and CAN_ID_GNSS_VELOCITY
 
         default:
             // Ignore other messages
@@ -370,11 +367,7 @@ static void check_node_timeouts(void) {
 
 static bool g_epaper_initialized = false;
 
-/**
- * @brief Draw status bar at top of display
- */
 static void draw_status_bar(void) {
-    // Status bar showing node connectivity
     const char *m_status = g_master_status.connected ? "OK" : "--";
     const char *r_status = g_rudder_status.connected ? "OK" : "--";
     const char *g_status = (g_master_flags & FLAG_GNSS_VALID) ? "OK" : "--";
@@ -383,22 +376,15 @@ static void draw_status_bar(void) {
                   m_status, r_status, g_status, g_current_page + 1);
 }
 
-/**
- * @brief Draw Page 1: Autopilot Status
- */
 static void draw_page_autopilot(void) {
-    // Heading (large) and target (right aligned)
-    // Display is 296x128, size 2 = 16px/char
     epaper_printf(0, 12, 2, "HDG:%5.1f", g_heading);
     epaper_printf(168, 12, 2, "TGT:%5.1f", g_target_heading);
 
-    // Rudder angle
     const char *dir = "";
     if (g_rudder_angle > 0.5f) dir = "STBD";
     else if (g_rudder_angle < -0.5f) dir = "PORT";
     epaper_printf(0, 44, 2, "RUD:%+5.1f %s", g_rudder_angle, dir);
 
-    // State and error on smaller lines
     const char *state_str = state_to_string((system_state_t)g_master_status.state);
     float error = g_target_heading - g_heading;
     while (error > 180.0f) error -= 360.0f;
@@ -406,15 +392,11 @@ static void draw_page_autopilot(void) {
 
     epaper_printf(0, 76, 1, "State: %s  Err: %+.1f", state_str, error);
 
-    // Fault code if any
     if (g_master_status.fault_code != 0) {
         epaper_printf(0, 90, 1, "FAULT: 0x%02X", g_master_status.fault_code);
     }
 }
 
-/**
- * @brief Draw Page 2: Navigation
- */
 static void draw_page_navigation(void) {
     epaper_printf(0, 20, 2, "NAVIGATION");
 
@@ -429,13 +411,9 @@ static void draw_page_navigation(void) {
     }
 }
 
-/**
- * @brief Draw Page 3: System Status
- */
 static void draw_page_system(void) {
     epaper_printf(0, 16, 1, "=== SYSTEM STATUS ===");
 
-    // Master status
     if (g_master_status.connected) {
         uint32_t age = esp_log_timestamp() - g_master_status.last_heartbeat_ms;
         epaper_printf(0, 32, 1, "Master: CONNECTED  HB: %lums", age);
@@ -446,7 +424,6 @@ static void draw_page_system(void) {
         epaper_printf(0, 32, 1, "Master: DISCONNECTED");
     }
 
-    // Rudder status
     if (g_rudder_status.connected) {
         uint32_t age = esp_log_timestamp() - g_rudder_status.last_heartbeat_ms;
         epaper_printf(0, 62, 1, "Rudder: CONNECTED  HB: %lums", age);
@@ -455,16 +432,12 @@ static void draw_page_system(void) {
         epaper_printf(0, 62, 1, "Rudder: DISCONNECTED");
     }
 
-    // Network info
     char ip[32];
     network_manager_get_ip(ip, sizeof(ip));
     epaper_printf(0, 92, 1, "IP: %s", ip);
-    epaper_printf(0, 104, 1, "Version: %s", TESTAP2_FW_VERSION);
+    epaper_printf(0, 104, 1, "Version: %s", FIRMWARE_VERSION);
 }
 
-/**
- * @brief Update display content
- */
 static void display_update(void) {
     if (!g_epaper_initialized) {
         ESP_LOGW(TAG, "e-Paper not initialized");
@@ -474,13 +447,9 @@ static void display_update(void) {
 
     ESP_LOGI(TAG, "Updating display (page %d)...", g_current_page);
 
-    // Clear framebuffer
     epaper_clear();
-
-    // Draw status bar (all pages)
     draw_status_bar();
 
-    // Draw page content
     switch (g_current_page) {
         case PAGE_AUTOPILOT:
             draw_page_autopilot();
@@ -498,9 +467,7 @@ static void display_update(void) {
             break;
     }
 
-    // Update the physical display
     epaper_update();
-
     g_display_needs_update = false;
     ESP_LOGI(TAG, "Display update complete");
 }
@@ -509,32 +476,21 @@ static void display_update(void) {
  * Tasks
  *============================================================================*/
 
-/**
- * @brief CAN task - receive heartbeats and send commands
- */
-static void task_can(void *pvParameters) {
-    ESP_LOGI(TAG, "Task_CAN started");
+static void task_espnow(void *pvParameters) {
+    ESP_LOGI(TAG, "Task_ESPNOW started");
 
     TickType_t last_wake = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(20);  // 50 Hz
 
     while (1) {
-        // Receive CAN messages
-        twai_message_t msg;
-        while (can_receive(&msg, 0) == ESP_OK) {
-            process_can_message(&msg);
-        }
-
         // Check for node timeouts
         check_node_timeouts();
 
+        // ESP-NOW receive is handled via callback
         vTaskDelayUntil(&last_wake, period);
     }
 }
 
-/**
- * @brief Button task - handle user input
- */
 static void task_buttons(void *pvParameters) {
     ESP_LOGI(TAG, "Task_Buttons started");
 
@@ -542,7 +498,6 @@ static void task_buttons(void *pvParameters) {
     const TickType_t period = pdMS_TO_TICKS(20);  // 50 Hz
 
     while (1) {
-        // Update all buttons
         for (int i = 0; i < BTN_COUNT; i++) {
             button_update((button_id_t)i);
         }
@@ -551,9 +506,6 @@ static void task_buttons(void *pvParameters) {
     }
 }
 
-/**
- * @brief Display task - update e-Paper display
- */
 static void task_display(void *pvParameters) {
     ESP_LOGI(TAG, "Task_Display started");
 
@@ -566,21 +518,12 @@ static void task_display(void *pvParameters) {
     while (1) {
         vTaskDelayUntil(&last_wake, period);
 
-        // Update display if needed
         if (g_display_needs_update) {
             display_update();
         }
-
-        // TODO: Implement actual e-Paper refresh logic
-        // - Track last full refresh time
-        // - Use partial refresh normally
-        // - Force full refresh every FULL_REFRESH_MS
     }
 }
 
-/**
- * @brief Network task - handle console commands
- */
 static void task_network(void *pvParameters) {
     ESP_LOGI(TAG, "Task_Network started");
 
@@ -645,7 +588,7 @@ void ui_get_ip_address(char *buf, size_t buf_size) {
 }
 
 const char* ui_get_version(void) {
-    return TESTAP2_FW_VERSION;
+    return FIRMWARE_VERSION;
 }
 
 bool ui_is_epaper_initialized(void) {
@@ -657,12 +600,6 @@ void ui_force_display_refresh(void) {
     display_update();
 }
 
-/**
- * @brief Get button state information for console display
- * @param buf Output buffer
- * @param size Buffer size
- * @return Number of bytes written
- */
 size_t ui_get_button_states(char *buf, size_t size) {
     const char *btn_names[] = {"-10", "-1", "ENG", "MOD", "+1", "+10"};
     size_t len = 0;
@@ -690,7 +627,10 @@ size_t ui_get_button_states(char *buf, size_t size) {
  *============================================================================*/
 
 void ui_node_init(void) {
-    ESP_LOGI(TAG, "Initializing UI Node");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  TestAPEN UI Node");
+    ESP_LOGI(TAG, "  Version: %s", FIRMWARE_VERSION);
+    ESP_LOGI(TAG, "========================================");
 
     // ========== PHASE 1: Buttons ==========
     ESP_LOGI(TAG, "Initializing buttons...");
@@ -710,7 +650,7 @@ void ui_node_init(void) {
     esp_err_t net_err = network_manager_init(
         CONFIG_TESTAP2_WIFI_SSID,
         CONFIG_TESTAP2_WIFI_PASSWORD,
-        "testap2-ui",
+        "testapen-ui",
         CONFIG_TESTAP2_DEBUG_PORT
     );
     if (net_err != ESP_OK) {
@@ -725,7 +665,16 @@ void ui_node_init(void) {
     console_init();
     network_manager_set_command_callback(console_process_command);
 
-    // ========== PHASE 4: e-Paper Display ==========
+    // ========== PHASE 4: ESP-NOW ==========
+    ESP_LOGI(TAG, "Initializing ESP-NOW...");
+    if (espnow_init() != ESP_OK) {
+        ESP_LOGE(TAG, "ESP-NOW initialization failed!");
+    } else {
+        ESP_LOGI(TAG, "ESP-NOW initialized");
+        espnow_register_recv_callback(espnow_message_handler);
+    }
+
+    // ========== PHASE 5: e-Paper Display ==========
     ESP_LOGI(TAG, "Initializing e-Paper display...");
     if (epaper_init() == ESP_OK) {
         g_epaper_initialized = true;
@@ -733,8 +682,8 @@ void ui_node_init(void) {
 
         // Clear and show initial screen
         epaper_clear();
-        epaper_printf(50, 40, 2, "TestAP2");
-        epaper_printf(50, 70, 1, "UI Node v%s", TESTAP2_FW_VERSION);
+        epaper_printf(50, 40, 2, "TestAPEN");
+        epaper_printf(50, 70, 1, "UI Node v%s", FIRMWARE_VERSION);
         epaper_printf(50, 90, 1, "Initializing...");
         epaper_update();
     } else {
@@ -742,15 +691,17 @@ void ui_node_init(void) {
         g_epaper_initialized = false;
     }
 
-    // ========== PHASE 5: Create Tasks ==========
+    // ========== PHASE 6: Create Tasks ==========
     ESP_LOGI(TAG, "Creating tasks...");
 
-    xTaskCreate(task_can, "Task_CAN", 4096, NULL, 5, &h_task_can);
+    xTaskCreate(task_espnow, "Task_ESPNOW", 4096, NULL, 5, &h_task_espnow);
     xTaskCreate(task_buttons, "Task_Buttons", 2048, NULL, 4, &h_task_buttons);
     xTaskCreate(task_display, "Task_Display", 4096, NULL, 2, &h_task_display);
     xTaskCreate(task_network, "Task_Network", 4096, NULL, 1, &h_task_network);
 
-    ESP_LOGI(TAG, "UI Node initialization complete");
+    ESP_LOGI(TAG, "========================================");
+    ESP_LOGI(TAG, "  UI Node initialization complete");
+    ESP_LOGI(TAG, "========================================");
 }
 
 #endif // CONFIG_TESTAP2_NODE_UI

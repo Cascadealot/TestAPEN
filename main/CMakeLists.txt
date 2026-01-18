@@ -1,4 +1,5 @@
-# TestAP2 Main Component CMakeLists.txt
+# TestAPEN Main Component CMakeLists.txt
+# Fork of TestAP2 using ESP-NOW instead of CAN bus
 
 idf_component_register(
     SRCS
@@ -10,7 +11,7 @@ idf_component_register(
         "."
     REQUIRES
         autopilot_common
-        can_protocol
+        espnow_protocol
         state_machine
         icm20948
         ssd1306

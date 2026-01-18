@@ -8,7 +8,7 @@
 #include "cmd_console.h"
 #include "state_machine.h"
 #include "param_store.h"
-#include "can_protocol.h"
+#include "espnow_protocol.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "freertos/FreeRTOS.h"
@@ -158,7 +158,7 @@ static size_t cmd_help(char *response, size_t size) {
         "  gpsoffset     - Show GPS heading offset\r\n"
         "  gpsoffset apply - Apply GPS-derived correction\r\n"
         "  gpsoffset reset - Reset GPS offset tracking\r\n"
-        "  can           - Show CAN bus status\r\n"
+        "  espnow        - Show ESP-NOW status\r\n"
         "  pid           - Show PID parameters\r\n"
         "  pid Kp Ki Kd  - Set PID parameters\r\n"
         "  param list    - List all parameters\r\n"
@@ -572,7 +572,7 @@ static size_t cmd_help(char *response, size_t size) {
         "  param set N V - Set parameter N to value V\r\n"
         "  param save    - Save parameters to NVS\r\n"
         "  param reset   - Reset to defaults\r\n"
-        "  can           - Show CAN bus status\r\n"
+        "  espnow        - Show ESP-NOW status\r\n"
         "  fault clear   - Clear fault state\r\n"
         "  version       - Show version info\r\n"
         "  reboot        - Reboot device\r\n"
@@ -779,7 +779,7 @@ static size_t cmd_help(char *response, size_t size) {
         "  param set N V - Set parameter N to value V\r\n"
         "  param save    - Save parameters to NVS\r\n"
         "  param reset   - Reset to defaults\r\n"
-        "  can           - Show CAN bus status\r\n"
+        "  espnow        - Show ESP-NOW status\r\n"
         "  version       - Show version info\r\n"
         "  reboot        - Reboot device\r\n"
         "  help          - Show this help\r\n"
@@ -822,14 +822,14 @@ static size_t cmd_state(char *response, size_t size) {
 static size_t cmd_engage(char *response, size_t size) {
     return snprintf(response, size,
         "UI Node cannot directly engage.\r\n"
-        "Use physical buttons or send CAN command.\r\n"
+        "Use physical buttons or send ESP-NOW command.\r\n"
     );
 }
 
 static size_t cmd_disengage(char *response, size_t size) {
     return snprintf(response, size,
         "UI Node cannot directly disengage.\r\n"
-        "Use physical buttons or send CAN command.\r\n"
+        "Use physical buttons or send ESP-NOW command.\r\n"
     );
 }
 
@@ -919,30 +919,45 @@ static size_t cmd_reboot(char *response, size_t size) {
     return snprintf(response, size, "Rebooting in 1 second...\r\n");
 }
 
-static size_t cmd_can(char *response, size_t size) {
-    can_status_t status;
-    can_get_status(&status);
+static size_t cmd_espnow(char *response, size_t size) {
+    espnow_status_t status;
+    espnow_get_status(&status);
+
+    char own_mac_str[18];
+    espnow_mac_to_str(status.own_mac, own_mac_str);
+
+    char master_mac_str[18];
+    char rudder_mac_str[18];
+    char ui_mac_str[18];
+    espnow_mac_to_str(espnow_get_master_mac(), master_mac_str);
+    espnow_mac_to_str(espnow_get_rudder_mac(), rudder_mac_str);
+    espnow_mac_to_str(espnow_get_ui_mac(), ui_mac_str);
 
     return snprintf(response, size,
-        "CAN Bus Status:\r\n"
-        "  State: %s\r\n"
-        "  TX errors: %lu\r\n"
-        "  RX errors: %lu\r\n"
+        "ESP-NOW Status:\r\n"
+        "  Initialized: %s\r\n"
+        "  Own MAC: %s\r\n"
+        "  Channel: %d\r\n"
+        "  Peers: %d\r\n"
+        "  TX success: %lu\r\n"
         "  TX failed: %lu\r\n"
-        "  RX missed: %lu\r\n"
-        "  Arb lost: %lu\r\n"
-        "  Bus errors: %lu\r\n"
-        "  TX queue: %lu\r\n"
-        "  RX queue: %lu\r\n",
-        can_state_to_string(status.state),
-        status.tx_error_count,
+        "  RX count: %lu\r\n"
+        "  RX errors: %lu\r\n"
+        "Configured Peers:\r\n"
+        "  Master: %s\r\n"
+        "  Rudder: %s\r\n"
+        "  UI: %s\r\n",
+        status.initialized ? "yes" : "no",
+        own_mac_str,
+        status.channel,
+        status.peer_count,
+        status.tx_success_count,
+        status.tx_fail_count,
+        status.rx_count,
         status.rx_error_count,
-        status.tx_failed_count,
-        status.rx_miss_count,
-        status.arb_lost_count,
-        status.bus_error_count,
-        status.msgs_to_tx,
-        status.msgs_to_rx);
+        master_mac_str,
+        rudder_mac_str,
+        ui_mac_str);
 }
 
 /*============================================================================
@@ -1181,8 +1196,8 @@ size_t console_process_command(const char *cmd, char *response, size_t response_
     else if (strcmp(cmd, "param reset") == 0) {
         return cmd_param_reset(response, response_size);
     }
-    else if (strcmp(cmd, "can") == 0) {
-        return cmd_can(response, response_size);
+    else if (strcmp(cmd, "espnow") == 0) {
+        return cmd_espnow(response, response_size);
     }
 
 #ifdef CONFIG_TESTAP2_NODE_MASTER
