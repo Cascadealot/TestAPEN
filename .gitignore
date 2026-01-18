@@ -1,0 +1,10 @@
+build/
+*.pyc
+__pycache__/
+.venv/
+*.o
+*.bin
+*.elf
+*.map
+sdkconfig.old
+

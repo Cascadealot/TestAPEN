@@ -1,0 +1,214 @@
+################################################################################
+#                    CLAUDE SESSION CONTEXT - 2026-01-14                       #
+################################################################################
+
+PROJECT: TestAP2 (Dual-node CAN bus marine autopilot)
+LOCATION: /home/cas/TestAP2/
+BRANCH: feature/NET-rudder-node-network
+FW VERSION: 1.1.0
+
+================================================================================
+CRITICAL: RUDDER DRIVE SYSTEM (READ THIS FIRST)
+================================================================================
+
+PHYSICAL CONFIGURATION:
+- AS5600 encoder magnet is on MOTOR DRIVE SHAFT (not the rudder!)
+- Motor uses WORM DRIVE GEARBOX (non-backdriveable)
+- 2.25 motor shaft rotations = full rudder travel (lock-to-lock)
+- Rudder range: ±35 degrees (70 degrees total)
+
+MANUAL OVERRIDE (SAFETY):
+- Boat has foot pedal steering and continuous line rudder control
+- Manual controls ALWAYS override autopilot
+- Worm drive disconnects load when rudder moved manually
+- NO SAFETY RISK from autopilot malfunction
+
+RE-CENTERING REQUIREMENT:
+- When user manually moves rudder, encoder position becomes STALE
+- User must: 1) Position rudder to center, 2) Issue "cal center" command
+- This resets virtual position to zero at current encoder reading
+- MUST re-center after any manual rudder movement
+
+MULTI-TURN TRACKING:
+- AS5600 is single-turn (0-360°), motor turns 2.25 rotations
+- Firmware tracks wrap-around to build virtual position
+- Constants: MOTOR_TURNS_LOCK_TO_LOCK=2.25, COUNTS_CENTER_TO_LIMIT=4608
+
+ENGAGE BEHAVIOR:
+- At ENGAGE: Use last known rudder position from previous engage
+- If no previous data (first boot): Assume rudder is CENTERED (0 degrees)
+- Worm drive holds position, so last known position is valid unless manual movement
+- User responsible for re-centering if rudder was moved manually between sessions
+
+TESTING IMPLICATIONS:
+- Can ENGAGE without strict rudder feedback validation from Master
+- Rudder node can operate independently for servo testing
+- "cal center" before engage if rudder position is unknown
+
+================================================================================
+SESSION 8 - WORK COMPLETED (Comprehensive Testing + Bug Fix)
+================================================================================
+
+1. COMPREHENSIVE SYSTEM TESTING
+   - All Master console commands tested and verified
+   - All Rudder console commands tested and verified
+   - IMU heading, simulation mode, magcal working
+   - AS5600 encoder reading correctly
+   - Servo motor control verified via CAN commands
+
+2. BUG FIX: MASTER ENGAGE (commit ddd6062)
+   - master_engage() was passing NULL for preconditions
+   - State machine requires valid preconditions for IDLE→ENGAGED
+   - Fixed by building engage_preconditions_t struct
+   - Master engage/disengage now working
+
+3. SERVO TEST RESULTS
+   - +20° command: 0° → 19.1° in ~2 seconds
+   - -20° command: Moved port correctly
+   - Center command: Returned to 0.9° (within deadband)
+
+4. KNOWN ISSUES DOCUMENTED
+   - Master CAN TX: Hardware wiring issue (fix on new board)
+   - BLE: Not implemented (BLE-001, BLE-002 TODO)
+
+================================================================================
+SESSION 7 - WORK COMPLETED (Boot Display Progress)
+================================================================================
+
+1. BOOT DISPLAY PROGRESS (Both Nodes)
+   - Display now initializes FIRST after I2C
+   - Shows version and "Booting..." immediately
+   - Updates status as each component initializes:
+     - State machine, WiFi, Sensors, CAN, Motor
+   - Shows "All systems OK" summary with 1.5s pause
+   - Then transitions to normal operational display
+
+2. MASTER NODE MCU REPLACEMENT
+   - Original MCU was overheating (5W, super hot)
+   - Replaced with spare MCU - now normal 1.2W
+   - Code reviewed: no tight loops or radio issues
+   - Overheating was hardware failure, not software
+
+3. MASTER IP CHANGED
+   - New MCU got different IP from DHCP
+   - Master now at: 192.168.1.118 (was .189)
+
+================================================================================
+SESSION 6 - WORK COMPLETED (Rudder Display + Testing)
+================================================================================
+
+1. RUDDER NODE DISPLAY (main/rudder_node.c)
+   - Added SSD1306 OLED display support (128x32, 4 lines)
+   - Display shows: State, Rudder angle, Commanded angle, IP/Motor status
+   - Uses same driver as Master node (components/ssd1306)
+   - Initial display showed "hot glue damage" - replaced hardware, works now
+
+2. MOTOR SERVO TESTING
+   - Tested via USB CAN adapter simulating Master commands
+   - Movement to +30°: Tracked correctly (0° → 29.1°)
+   - Multi-turn wrap-around working (raw encoder wrapped 3158 → 1047)
+   - Deadband functioning (stops within 1° of target)
+
+================================================================================
+SESSION 5 - WORK COMPLETED (Console Fix)
+================================================================================
+
+1. TELNET CONSOLE FIX (components/network_manager/network_manager.c)
+   - Root cause: Single-byte non-blocking recv with 10ms loop delay
+   - Task priority (2) starved by CAN(5), IMU(4), Rudder(4) tasks
+   - Fix: Use select() with 50ms timeout for efficient I/O waiting
+   - Fix: Read in 64-byte chunks instead of single bytes
+   - Fix: Increased task priority from 2 to 4
+   - Added errno.h include for proper error handling
+   - OTA'd to both Master and Rudder - VERIFIED WORKING
+
+================================================================================
+SESSION 4 - WORK COMPLETED (Multi-turn Tracking)
+================================================================================
+
+1. MULTI-TURN ENCODER TRACKING (main/rudder_node.c)
+   - Tracks AS5600 wrap-around for motor shaft mounting
+   - 2.25 motor turns = 70 degrees rudder travel
+   - Boot assumes centered position (auto-calibration)
+
+2. OTA PARTITION SUPPORT
+   - Changed sdkconfig from SINGLE_APP to TWO_OTA
+   - Enables firmware updates via HTTP POST to /update
+
+3. VERSION BUMP TO 1.1.0
+   - components/autopilot_common/include/autopilot_common.h
+   - main/master_node.c
+   - main/rudder_node.c
+
+4. MOTOR TESTED SUCCESSFULLY
+   - Used USB-CAN adapter (CANable) + SocketCAN
+   - Starboard (+10 deg): Moved to +9.0 deg
+   - Port (-10 deg): Moved to -9.1 deg
+   - Deadband working (stops within 1 deg)
+
+5. COMMITTED AND PUSHED
+   - Commit: cba3f4d
+   - PR #3 updated: https://github.com/Cascadealot/TestAP2/pull/3
+
+================================================================================
+CURRENT STATUS
+================================================================================
+
+NODE IPs:
+- Master: 192.168.1.118 (WiFi + CAN working) - NEW MCU
+- Rudder: 192.168.1.157 (WiFi + CAN working)
+
+CAN STATUS: BOTH NODES COMMUNICATING
+- Master heartbeats (0x10400001) at 10 Hz
+- Rudder heartbeats (0x10800001) at 50 Hz
+- RESOLVED: Master CAN was wired to GPIO 26/12 not 5/4
+
+CAN PIN CONFIG:
+- Rudder: TX=GPIO 5, RX=GPIO 4
+- Master: TX=GPIO 26, RX=GPIO 12 (different wiring!)
+
+FLASHING POLICY:
+- OTA ONLY for both nodes
+- Master: curl -X POST --data-binary @build/testap2.bin http://192.168.1.118/update
+- Rudder: curl -X POST --data-binary @build/testap2.bin http://192.168.1.157/update
+- If WiFi not responding, troubleshoot first (do not use USB)
+
+USB-CAN ADAPTER SETUP:
+- Device: CANable at /dev/ttyACM0 or /dev/ttyACM1
+- Setup: sudo slcand -o -c -s6 /dev/ttyACM0 can0 && sudo ip link set up can0
+- Monitor: candump can0
+- Send: cansend can0 <ID>#<DATA>
+
+================================================================================
+TO RESUME
+================================================================================
+
+1. Test engage/disengage via Master console (CAN is working)
+
+2. Implement remaining features:
+   - CAN-007: Master heartbeat monitoring (rudder monitors master)
+   - SAFE-001: Stall detection (motor running but rudder not moving)
+   - SAFE-002: Drive timeout protection
+
+3. User building UiNode - will need to be integrated into project
+
+================================================================================
+BUILD COMMANDS
+================================================================================
+
+# Source ESP-IDF
+source ~/esp/esp-idf/export.sh
+
+# Build (check sdkconfig for MASTER vs RUDDER node)
+idf.py build
+
+# Flash via USB
+idf.py -p /dev/ttyUSB0 flash
+
+# OTA update
+curl -X POST --data-binary @build/testap2.bin http://<IP>/update
+
+# Switch node type in sdkconfig:
+# CONFIG_TESTAP2_NODE_MASTER=y  or  CONFIG_TESTAP2_NODE_RUDDER=y
+
+================================================================================

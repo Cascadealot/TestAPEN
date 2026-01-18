@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Cascade Autopilot</string>
+
+    <!-- Connection -->
+    <string name="connect">Connect</string>
+    <string name="disconnect">Disconnect</string>
+    <string name="scanning">Scanning…</string>
+    <string name="connected">Connected</string>
+    <string name="disconnected">Disconnected</string>
+
+    <!-- Demo Mode -->
+    <string name="demo_mode">Demo Mode</string>
+    <string name="demo_mode_active">DEMO</string>
+
+    <!-- States -->
+    <string name="state_boot">BOOT</string>
+    <string name="state_idle">IDLE</string>
+    <string name="state_engaged">ENGAGED</string>
+    <string name="state_calibration">CALIBRATION</string>
+    <string name="state_faulted">FAULTED</string>
+
+    <!-- Controls -->
+    <string name="engage">ENGAGE</string>
+    <string name="disengage">DISENGAGE</string>
+    <string name="calibrate">CALIBRATE</string>
+    <string name="clear_fault">CLEAR FAULT</string>
+    <string name="parameters">PARAMETERS</string>
+
+    <!-- Headings -->
+    <string name="heading">HEADING</string>
+    <string name="current">Current</string>
+    <string name="target">Target</string>
+    <string name="error">Error</string>
+
+    <!-- Rudder -->
+    <string name="rudder">RUDDER</string>
+    <string name="port">PORT</string>
+    <string name="stbd">STBD</string>
+
+    <!-- Calibration -->
+    <string name="cal_title">Rudder Calibration</string>
+    <string name="cal_center">Set Center</string>
+    <string name="cal_port">Set Port Limit</string>
+    <string name="cal_stbd">Set Starboard Limit</string>
+    <string name="cal_save">Save Calibration</string>
+    <string name="cal_exit">Exit Calibration</string>
+
+    <!-- Parameters -->
+    <string name="param_title">Autopilot Parameters</string>
+    <string name="param_save">Save</string>
+    <string name="param_reset">Reset Defaults</string>
+</resources>

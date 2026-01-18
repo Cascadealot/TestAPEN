@@ -1,0 +1,988 @@
+################################################################################
+#                          QUICK RECOVERY SUMMARY                              #
+################################################################################
+
+PROJECT: TestAP2 - Tri-node marine autopilot (ESP-IDF)
+REPO: https://github.com/Cascadealot/TestAP2
+BRANCH: feature/UI-node-implementation
+FSD: docs/TestAP2.FSD.v1.0.0.md
+FW VERSION: 1.1.0
+
+STATUS: 30/32 features complete + UiNode (Phase 1)
+
+LAST COMPLETED (Session 16 - UiNode Implementation Phase 1):
+- Created UI Node as third node type for TestAP2
+- Button input with debouncing and long-press detection (6 buttons)
+- CAN heartbeat receive from Master and Rudder nodes
+- Node connectivity monitoring with 500ms timeout
+- Console commands: status, display, page, nodes
+- Build compiles successfully (831KB binary, 47% free)
+- OTA deployment pending (device at 192.168.1.186 needs initial USB flash)
+
+Previous (Session 15 - OTA Fix + CAN Diagnostics):
+- Fixed OTA firmware updates (use --data-binary, not -F multipart)
+- Added CAN diagnostic command to both Master and Rudder nodes
+- Fixed duplicate CAN init bug in master_node.c
+- Diagnosed CAN bus as HARDWARE issue (not software):
+  * Rudder: 409,563 bus errors, TX errors at 128 (error-passive)
+  * Master: 0 bus errors but TX queue stuck, RX queue empty
+  * Physical inspection needed: transceivers, wiring, termination
+- OTA command: curl -X POST --data-binary @build/testap2.bin -H "Content-Type: application/octet-stream" http://<ip>/update
+
+Session 14 - IMU Calibration Improvements:
+- Created docs/IMU_Calibration_Report.md (comprehensive analysis)
+- Implemented 5 IMU calibration features:
+  1. Guided magnetometer calibration workflow (magcal start/stop/status)
+  2. Accelerometer level calibration (accelcal command)
+  3. Gyroscope bias calibration (gyrocal command)
+  4. Madgwick sensor fusion filter (9-axis AHRS)
+  5. GPS-aided calibration monitoring (gpsoffset command)
+- New console commands: magcal start/stop/status/save, accelcal, gyrocal,
+  fusion on/off/beta, gpsoffset apply/reset
+- Binary size: 1.07MB (32% free in 1.5MB partition)
+
+Session 13:
+- CAN-007: Master heartbeat monitoring on rudder node
+- SAFE-001: Motor stall detection (< 0.5° in 500ms)
+- SAFE-002: Drive timeout protection (5s continuous motor run)
+- CAL-001/002/003: Calibration storage (rudder + magnetometer)
+- Fixed CAL_CMD_SAVE bug (wasn't actually saving to NVS)
+
+NEXT PRIORITIES (GNSS - 3 remaining features):
+⚠️  APP PARTITION FULL - REQUIRES EXPANSION BEFORE GNSS ⚠️
+
+Current: ota_0/ota_1 = 1MB each, binary = 1,047KB (0% free)
+Proposed: Expand to 1.5MB each (unused flash available 0x220000-0x400000)
+
+To expand partitions (requires USB flash):
+1. Modify partitions.csv: ota_0/ota_1 size = 0x180000 (1.5MB)
+2. Disable WiFi/BLE in sdkconfig temporarily
+3. idf.py -p /dev/ttyUSB0 flash (immediately after power-on!)
+4. Re-enable WiFi/BLE
+5. Continue with OTA updates
+
+GNSS Features:
+1. GNSS-001: GNSS UART initialization (UART2, 115200, RX=16, TX=17) - DRIVER CREATED
+2. GNSS-002: UBX-NAV-PVT parsing (position, speed, COG) - DRIVER CREATED
+3. GNSS-003: COG steering mode (blend compass/COG based on speed) - DRIVER CREATED
+
+GNSS Driver Created (components/gnss_driver/):
+- UBX protocol parser for NAV-PVT messages
+- Position, speed, COG extraction
+- COG validity checks (speed > 1.5kts, accuracy < 10°)
+- COG blending with compass (1.5-3.0 kts transition)
+- Not yet integrated into master_node.c (needs partition table update first)
+
+FUTURE TODO - GNSS NAVIGATION SYSTEM:
+
+1. TestAP2 Firmware (ESP32):
+   - GNSS-001: u-blox MIA-M10Q module initialization (UART2)
+   - GNSS-002: NMEA parsing (GGA, RMC, VTG sentences)
+   - GNSS-003: Position/COG/SOG data to Master node
+   - Navigation calculations: bearing, distance, XTE to waypoint
+   - BLE protocol: GNSS data characteristic for Android app
+   - CAN protocol: GNSS data to Rudder node (for display)
+
+2. Android App - Navigation Features:
+   - Marine chart display (OpenSeaMap or similar)
+   - Satellite imagery overlay option
+   - Real-time position tracking on chart
+   - Waypoint management (create, edit, delete, navigate to)
+   - Track recording (save current route)
+   - Track following (navigate along saved route)
+   - Navigation data display: bearing, distance, XTE, ETA
+   - Autopilot integration: auto-steer to waypoint/track
+
+Contingent on: MCU compute capacity and memory (currently OK)
+
+RESEARCH TOPICS FOR FUTURE SESSIONS:
+- u-blox MIA-M10Q datasheet: https://content.u-blox.com/sites/default/files/documents/MIA-M10Q_DataSheet_UBX-22015849.pdf
+- ICM-20948 DMP (Digital Motion Processor) for onboard sensor fusion
+- ICM-20948 datasheet: https://invensense.tdk.com/wp-content/uploads/2016/06/DS-000189-ICM-20948-v1.3.pdf
+- Best practices for mag cal and accel cal on ICM-20948
+
+MCU RESOURCE STATUS (ESP32-WROOM-32):
+- DRAM: 48KB used / 125KB total (38.6%) - plenty of headroom
+- IRAM: 106KB used / 131KB total (80.5%) - getting tighter
+- Flash: 899KB used / 4MB total (~22%) - lots of room
+
+TO RESUME DEVELOPMENT:
+1. cd /home/cas/TestAP2
+2. git pull origin master
+3. Read this file and CLAUDE.md for context
+4. Check agent/feature-list.json for feature details
+5. Create feature branch: git checkout -b feature/FEATURE-ID-description
+
+ARCHITECTURE:
+- Master Node: IMU, Display, WiFi/OTA, BLE, GNSS (TODO)
+- Rudder Node: AS5600 encoder, Motor driver, Servo control, WiFi/OTA
+- UI Node: 6 buttons, e-Paper display, CAN listener, WiFi/OTA
+- Communication: CAN bus 500kbps, 29-bit extended IDs
+- Parameters: Runtime configurable via BLE/Console/CAN, persist to NVS
+
+KEY FILES:
+- main/master_node.c - Master node implementation
+- main/rudder_node.c - Rudder node with AS5600 + servo control
+- main/ui_node.c - UI node with buttons + e-Paper display
+- components/ble_manager/ - BLE GATT service (NimBLE)
+- components/param_store/ - Runtime configurable parameters
+- android/app/src/main/java/.../testap2/ - Android app source
+
+BUILD (Firmware): idf.py build
+FLASH (Firmware): Use OTA! See warning below.
+BUILD (Android): cd android && ./gradlew assembleDebug
+
+⚠️  FIRMWARE FLASHING POLICY - PREFER OTA ⚠️
+
+ALWAYS use OTA updates when possible - helps expose OTA bugs and allows
+debugging via Console and CAN bus during/after updates.
+
+OTA COMMAND (use raw binary, NOT -F multipart):
+  curl -X POST --data-binary @build/testap2.bin \
+    -H "Content-Type: application/octet-stream" http://<ip>/update
+
+TELNET DEBUG CONSOLE: nc <ip> 2323
+
+NODE IPs (may vary by DHCP):
+- Master: 192.168.1.118
+- Rudder: 192.168.1.157
+- UI: 192.168.1.186 (pending first USB flash)
+
+USB FLASH ONLY WHEN:
+- OTA is broken and needs fixing
+- Partition table changes required
+- First-time flash of new hardware
+- Recovery from bricked firmware
+
+⚠️  USB serial access while BLE+WiFi active CRASHES the MCU!
+See CLAUDE.md "Known Issues" section for details.
+
+################################################################################
+
+================================================================================
+SESSION 16 - 2026-01-17 (UiNode Implementation Phase 1)
+================================================================================
+
+NEW NODE TYPE: UI Node
+
+Created a third node type for the TestAP2 system. The UI Node provides:
+- Physical button input for heading adjustment and engage/disengage
+- e-Paper display for navigation data (driver not yet implemented)
+- CAN bus listener for Master and Rudder heartbeats
+- Node connectivity monitoring
+
+HARDWARE SPECIFICATION:
+- MCU: ESP32-WROOM-32 (same as other nodes)
+- 6 physical buttons: -10, -1, Engage, Mode, +1, +10
+- 2.9" e-Paper display (296x128, SSD1680 driver) - placeholder only
+- CAN bus interface (GPIO 5 TX, GPIO 4 RX)
+
+BUTTON GPIO ASSIGNMENTS:
+| Button | GPIO | Notes |
+|--------|------|-------|
+| -10 deg | 36 | Input-only, needs external pull-up |
+| -1 deg | 39 | Input-only, needs external pull-up |
+| Engage | 34 | Input-only |
+| Mode | 35 | Input-only |
+| +1 deg | 32 | Has internal pull-up |
+| +10 deg | 33 | Has internal pull-up |
+
+FILES CREATED:
+- main/ui_node.c - Full UiNode implementation (~600 lines)
+- Plan file: /home/cas/.claude/plans/groovy-juggling-whisper.md
+
+FILES MODIFIED:
+- main/Kconfig.projbuild - Added CONFIG_TESTAP2_NODE_UI and UI Node menus
+- main/main.c - Added ui_node_init() conditional call
+- main/CMakeLists.txt - Added ui_node.c to SRCS
+- components/can_protocol/include/can_protocol.h - Added CAN message types:
+  * CAN_ID_UI_COMMAND (0x08C40001)
+  * CAN_ID_GNSS_POSITION (0x10440002)
+  * CAN_ID_GNSS_VELOCITY (0x10440003)
+  * UI command codes and message structures
+- components/cmd_console/cmd_console.c - Added UI node console support:
+  * Forward declarations for UI interface functions
+  * UI-specific command handlers (help, status, state, etc.)
+  * New commands: display, page, nodes
+
+FEATURES IMPLEMENTED:
+1. Button input with 20ms debouncing
+2. Long-press detection (1s threshold, 5Hz repeat)
+3. CAN receive for Master and Rudder heartbeats
+4. Node connectivity monitoring (500ms timeout)
+5. Display page management (3 pages: Autopilot, Navigation, System)
+6. UI command sending via CAN (heading adjust, engage/disengage)
+7. Network support (WiFi, OTA, telnet console)
+
+NOT YET IMPLEMENTED:
+- e-Paper display driver (placeholder task logs to console)
+- GNSS data reception and display
+- e-Paper refresh strategy (partial/full)
+
+BUILD STATUS:
+- Binary size: 831KB (47% free in 1.5MB partition)
+- Compiles without warnings
+
+DEPLOYMENT:
+- OTA to 192.168.1.186 failed (device not reachable)
+- Likely needs initial USB flash (new device without existing firmware)
+
+REMAINING UINODE PHASES:
+- Phase 2: e-Paper driver (SSD1680)
+- Phase 3: Display integration
+- Phase 4: GNSS data broadcast from Master
+- Phase 5: Console commands polish + testing
+
+GIT:
+- Branch: feature/UI-node-implementation
+- Previous branch: feature/NET-rudder-node-network
+
+================================================================================
+SESSION 15 - 2026-01-15 (OTA Fix + CAN Bus Diagnostics)
+================================================================================
+
+ISSUES FIXED:
+
+1. OTA FIRMWARE UPDATE FIX:
+   - Problem: OTA failing at ~53KB with "OTA write failed"
+   - Root cause: Using multipart form-data (-F) but handler expects raw binary
+   - Solution: Use --data-binary with Content-Type: application/octet-stream
+   - Working command:
+     curl -X POST --data-binary @build/testap2.bin \
+       -H "Content-Type: application/octet-stream" http://<ip>/update
+   - Both nodes successfully updated via OTA after fix
+
+2. DUPLICATE CAN INIT BUG:
+   - Problem: can_init() called twice - once in main.c, again in master_node.c
+   - Second call would fail but code continued (showed "CAN: FAIL" at boot)
+   - Fix: Removed duplicate can_init() from master_node.c line 776
+
+3. CAN DIAGNOSTIC COMMAND ADDED:
+   - Added `can` command to BOTH Master and Rudder nodes (previously Master-only)
+   - Moved cmd_can() from Master section to common section in cmd_console.c
+   - Shows: state, TX/RX errors, failed/missed counts, bus errors, queue depths
+
+CAN BUS DIAGNOSIS RESULTS:
+
+Master Node (192.168.1.118):
+- State: RUNNING
+- TX errors: 0, RX errors: 0
+- Bus errors: 0
+- TX queue: 6 (messages waiting), RX queue: 0
+
+Rudder Node (192.168.1.157):
+- State: RUNNING
+- TX errors: 128 (error-passive threshold!)
+- Bus errors: 409,563 (rapidly increasing!)
+- TX queue: 6 (messages waiting), RX queue: 0
+
+DIAGNOSIS: HARDWARE/WIRING ISSUE (not software)
+- High bus error count indicates physical layer problems
+- Possible causes:
+  1. CAN transceiver not connected properly
+  2. CAN-H/CAN-L wires swapped
+  3. Missing 120Ω termination resistors
+  4. No common ground between nodes
+  5. Faulty transceiver (especially on Rudder)
+
+FILES MODIFIED:
+- main/master_node.c - Removed duplicate can_init()
+- components/cmd_console/cmd_console.c - Moved cmd_can to common section
+- components/cmd_console/CMakeLists.txt - Added can_protocol dependency
+- components/can_protocol/can_protocol.c - Added can_get_status()
+- components/can_protocol/include/can_protocol.h - Added can_status_t, can_state_to_string()
+
+NEXT STEPS:
+- Physical inspection of CAN wiring and transceivers
+- Check termination resistors (120Ω at each end)
+- Verify common ground between nodes
+- Test with replacement MCU if needed
+
+================================================================================
+SESSION 13 - 2026-01-15 (Safety Features for Rudder Node)
+================================================================================
+
+FEATURES IMPLEMENTED:
+
+1. CAN-007: MASTER HEARTBEAT MONITORING (rudder_node.c)
+   - Tracks g_last_master_heartbeat_ms on each CAN_ID_MASTER_HEARTBEAT
+   - Checks heartbeat age in task_can loop
+   - After 500ms timeout: stops motor, sets ERR_HEARTBEAT_LOST fault
+   - Only starts monitoring after first heartbeat (avoids fault on cold boot)
+
+2. SAFE-001: STALL DETECTION (rudder_node.c)
+   - Monitors rudder position while motor is running
+   - If < 0.5° movement over 500ms: motor stall detected
+   - Stops motor immediately, sets ERR_MOTOR_STALL fault
+   - Resets monitoring when entering deadband or stopping motor
+
+3. SAFE-002: DRIVE TIMEOUT PROTECTION (rudder_node.c)
+   - Tracks continuous motor run time
+   - If motor runs for > 5000ms continuously: timeout fault
+   - Stops motor immediately, sets ERR_MOTOR_TIMEOUT fault
+   - Prevents runaway motor conditions
+
+SAFETY CONSTANTS (from autopilot_common.h):
+- HEARTBEAT_TIMEOUT_MS = 500
+- STALL_TIMEOUT_MS = 500
+- STALL_MIN_DELTA_DEG = 0.5
+- DRIVE_TIMEOUT_MS = 5000
+
+FILES MODIFIED:
+- main/rudder_node.c - Added safety monitoring logic, fixed CAL_CMD_SAVE
+- agent/feature-list.json - Marked CAN-007, SAFE-001, SAFE-002, CAL-001/002/003 complete
+
+BUG FIX:
+- CAL_CMD_SAVE was not calling rudder_calibrate_save() - only logged a message
+- Now properly saves center position to NVS when calibration save command received
+
+GNSS DRIVER CREATED:
+- components/gnss_driver/ - Full UBX protocol parser
+- gnss_driver.h - API with position, speed, COG, blending
+- gnss_driver.c - NAV-PVT parsing, COG validity, compass blending
+- Compiles but not yet integrated (needs USB flash for partition update)
+
+PARTITION TABLE EXPANDED:
+- ota_0/ota_1 changed from 1MB to 1.5MB each
+- Now 33% free space (512KB) for GNSS and future features
+- REQUIRES USB FLASH to apply partition table change!
+
+BUILD STATUS:
+- Compiles successfully with 33% free space
+- Ready for USB flash (partition table), then OTA
+
+FEATURE STATUS: 30/32 complete (GNSS driver ready, integration pending)
+
+REMAINING (pending partition table USB flash):
+- Integrate GNSS driver into master_node.c
+- Add GNSS console commands
+- Test with actual u-blox module
+
+================================================================================
+SESSION 12 - 2026-01-15 (BLE Crash Fix + Coredump Infrastructure)
+================================================================================
+
+CRITICAL BUG FIX:
+
+ROOT CAUSE IDENTIFIED VIA COREDUMP ANALYSIS:
+- BLE GATT server was crashing due to DOUBLE ble_gatts_start() call
+- Our ble_manager_init() called ble_gatts_start() manually
+- NimBLE host task ALSO calls it via ble_hs_start() during startup
+- Double initialization corrupted GATT server internal data structures
+- Crash occurred in ble_att_svr_find_by_uuid() with invalid pointer 0x85a0c8f3
+
+FIX: Removed manual ble_gatts_start() call from ble_manager.c:605
+     NimBLE handles this automatically - never call it manually!
+
+COREDUMP INFRASTRUCTURE ADDED:
+- Custom partition table (partitions.csv) with coredump partition
+- 64KB coredump partition at 0x10000
+- App partition offset changed from 0x10000 to 0x20000
+- CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y in sdkconfig
+- Coredump read command: python -m esp_coredump info_corefile --core <file> <elf>
+
+BLE STABILITY IMPROVEMENTS:
+- Removed ble_gatts_start() double-call (root cause of crashes)
+- Disabled sending BLE notifications from within GATT callbacks
+  (causes NimBLE reentrancy issues and memory corruption)
+- Added NULL checks for mbuf allocations
+- STATUS_REQ and PARAM_GET no longer send notifications from callbacks
+
+USB SERIAL BEHAVIOR DOCUMENTED:
+- USB serial access while WiFi active causes MCU to freeze
+- Even with BLE disabled, WiFi stack interferes with USB
+- Must use OTA for firmware updates when WiFi is running
+- Coredump reading requires quick USB access or BLE disabled firmware
+
+FILES MODIFIED:
+- components/ble_manager/ble_manager.c - Removed ble_gatts_start(), callback fixes
+- main/master_node.c - BLE init already had fallback for failures
+- partitions.csv - NEW: Custom partition table with coredump
+- sdkconfig - Coredump to flash enabled, custom partition table
+
+DEBUGGING METHODOLOGY (for future reference):
+1. Disable BLE in firmware to allow stable USB access
+2. Flash BLE-disabled firmware, read coredump partition
+3. Rebuild BLE-enabled firmware (same config as crash) for ELF symbols
+4. Analyze with: esp_coredump info_corefile --core dump.bin --core-format raw app.elf
+5. Backtrace shows exact crash location and call stack
+
+MCU RESOURCES:
+- DRAM: ~48KB used
+- IRAM: ~106KB used
+- Flash: ~1MB used (0% free - very tight with coredump overhead!)
+
+================================================================================
+SESSION 11 - 2026-01-15 (Mag Calibration + NVS Persistence)
+================================================================================
+
+FEATURES IMPLEMENTED:
+
+1. MAGNETOMETER CALIBRATION PERSISTENCE:
+   - Added 12 new parameters to param_store:
+     * Hard-iron offsets: PARAM_MAG_HARD_X/Y/Z
+     * Soft-iron matrix: PARAM_MAG_SOFT_00 through PARAM_MAG_SOFT_22
+   - ICM20948 driver updates:
+     * icm20948_load_mag_cal_from_nvs() - loads at boot
+     * icm20948_save_mag_cal_to_nvs() - persists to NVS
+     * icm20948_reset_mag_cal() - resets to defaults
+     * Soft-iron matrix multiplication in mag data processing
+
+2. RUDDER CALIBRATION PERSISTENCE:
+   - Added PARAM_CAL_RAW_CENTER to store encoder center position
+   - init_multi_turn_tracking() now loads stored calibration
+   - rudder_calibrate_save() persists center position to NVS
+   - Handles wrap-around detection at boot
+
+3. BLE MAG CALIBRATION COMMANDS:
+   - New characteristic UUID: ...9006 (Mag Calibration)
+   - Commands: 0x60 GET, 0x61 SET, 0x62 SAVE, 0x63 RESET
+   - Data format: 49 bytes (cmd + 3 hard-iron + 9 soft-iron floats)
+
+4. ANDROID APP ENHANCEMENTS:
+   - Created CascadeApplication class for shared BLE manager
+   - Added MagCalibrationActivity with:
+     * Hard-iron offset display (X, Y, Z in µT)
+     * Soft-iron 3x3 matrix display
+     * Read/Save/Reset buttons
+     * Test data buttons (90°, 180°, Clear)
+   - Added "Mag Cal" button to main screen
+   - Updated MainActivity and ParametersActivity to use shared BLE manager
+
+BUILD STATUS:
+- Firmware: Compiles successfully
+- Android: Compiles successfully, installed on device
+
+MCU RESOURCES:
+- DRAM: 48KB used (38.6%) - 76KB free
+- IRAM: 106KB used (80.5%) - 25KB free
+- Flash: 899KB used (~22%)
+
+FILES MODIFIED:
+- components/param_store/param_store.h - Added mag cal param IDs
+- components/param_store/param_store.c - Added mag cal param metadata
+- components/icm20948/icm20948.h - Added new API functions
+- components/icm20948/icm20948.c - Soft-iron + NVS persistence
+- components/icm20948/CMakeLists.txt - Added param_store dependency
+- components/ble_manager/ble_manager.h - Added mag cal command codes
+- components/ble_manager/ble_manager.c - Added mag cal characteristic
+- components/ble_manager/CMakeLists.txt - Added icm20948 dependency
+- main/master_node.c - Load mag cal at boot
+- main/rudder_node.c - Calibration persistence
+
+FILES CREATED:
+- android/app/src/main/java/.../CascadeApplication.kt
+- android/app/src/main/java/.../MagCalibrationActivity.kt
+- android/app/src/main/res/layout/activity_mag_calibration.xml
+- android/app/src/main/res/drawable/circle_indicator.xml
+
+================================================================================
+SESSION 10 - 2026-01-14 (Android App + BLE Enhancements)
+================================================================================
+
+FEATURES IMPLEMENTED:
+- Android control app in TestAP2/android/
+- BLE device name changed from "TestAP2" to "CascadeAP"
+- Added missing BLE command handlers (CAL_CENTER, CAL_PORT, CAL_STBD, CAL_SAVE, STATUS_REQ)
+- Added calibration CAN commands in master_node.c
+
+ANDROID APP CREATED (android/):
+
+1. Architecture:
+   - Kotlin with ViewBinding
+   - Material 3 design with dark marine theme
+   - BLE manager matching TestAP2 firmware protocol
+   - Demo mode for testing without hardware
+
+2. Key Files:
+   - MainActivity.kt: Main UI with heading/rudder display
+   - ParametersActivity.kt: PID/servo parameter tuning
+   - AutopilotBleManager.kt: BLE communication + demo mode
+   - activity_main.xml: Main layout (based on SimpleAutopilot)
+   - activity_parameters.xml: Parameter tuning layout
+
+3. Features:
+   - BLE scan and connect to "CascadeAP"
+   - Demo mode: Simulates autopilot behavior for USB testing
+   - State display: IDLE, ENGAGED, FAULTED, CALIBRATION
+   - Heading display: Current, Target, Error with ±1°/±10° buttons
+   - Rudder indicator: Visual position display
+   - Calibration dialog: Center, Port, Starboard, Save, Exit
+   - Parameters screen: Sliders for all 9 tunable parameters
+
+4. Protocol (matches firmware):
+   - Service UUID: 12345678-1234-1234-1234-123456789abc
+   - Characteristics: Command (...9001), Status (...9002),
+     Heading (...9003), Rudder (...9004), Parameters (...9005)
+   - Commands: 0x01-0x04 (engage/disengage/heading),
+     0x10-0x15 (calibration), 0x20 (fault clear),
+     0x30 (status req), 0x50-0x53 (params)
+
+FIRMWARE CHANGES:
+
+1. ble_manager.c:
+   - Device name: "TestAP2" → "CascadeAP"
+   - Added CAL_CENTER, CAL_PORT, CAL_STBD, CAL_SAVE handlers
+   - Added STATUS_REQ handler (sends all notifications)
+   - Fixed SET_HEADING byte order (now big-endian)
+
+2. master_node.c:
+   - Added send_calibration_cmd() for CAN calibration commands
+   - Added master_calibrate_center/port/starboard/save()
+
+BUILD STATUS:
+- Firmware compiles successfully
+- Binary size: 0xfb880 bytes (2% free in partition)
+
+REFERENCE CODE (deleted after use):
+- SimpleAutopilot Android app was referenced for UI layout
+- Located at /home/cas/SimpleAutopilot (to be deleted)
+
+================================================================================
+SESSION 9 - 2026-01-14 (BLE + Configurable Parameters)
+================================================================================
+
+FEATURES IMPLEMENTED:
+- BLE-001: BLE service initialization with NimBLE
+- BLE-002: BLE command processing with parameter commands
+
+COMPONENTS CREATED:
+
+1. param_store (components/param_store/):
+   - Centralized parameter management with NVS persistence
+   - 9 configurable parameters with validation ranges
+   - API: param_store_init(), param_get(), param_set(), param_save_all()
+
+2. ble_manager (components/ble_manager/):
+   - NimBLE GATT service: Service UUID 12345678-1234-1234-1234-123456789abc
+   - 5 characteristics: Command, Status, Heading, Rudder, Parameters
+   - Advertises as "TestAP2"
+   - Commands: ENGAGE, DISENGAGE, SET_HEADING, PARAM_GET/SET/SAVE/RESET
+
+CONFIGURABLE PARAMETERS:
+| ID | Name | Node | Default | Range |
+|----|------|------|---------|-------|
+| 0 | KP_HEADING | Master | 0.8 | 0.1-5.0 |
+| 1 | KI_HEADING | Master | 0.05 | 0.0-1.0 |
+| 2 | KD_HEADING | Master | 0.5 | 0.0-5.0 |
+| 3 | KP_SERVO | Rudder | 10.0 | 1.0-50.0 |
+| 4 | DEADBAND_ENTER | Rudder | 1.0 | 0.1-5.0 |
+| 5 | DEADBAND_EXIT | Rudder | 1.5 | 0.2-6.0 |
+| 6 | MIN_MOTOR_SPEED | Rudder | 20 | 0-50 |
+| 7 | MAX_MOTOR_SPEED | Rudder | 100 | 50-100 |
+| 8 | RUDDER_SLEW_RATE | Rudder | 15.0 | 1.0-60.0 |
+
+THREE CONTROL POINTS:
+1. BLE - Mobile app (nRF Connect) using Parameters characteristic
+2. Console - param, pid, servo, motor commands via telnet
+3. CAN - MSG_TYPE_PARAM_CONFIG (0x08580001) Master->Rudder
+
+CODE CHANGES:
+
+1. main/master_node.c:
+   - Added param_store.h and ble_manager.h includes
+   - PID uses param_get() instead of hardcoded constants
+   - BLE manager initialized in master_node_init()
+   - CAN param sync callback sends Rudder params over CAN
+
+2. main/rudder_node.c:
+   - Servo control uses param_get() for all control parameters
+   - CAN handler processes MSG_TYPE_PARAM_CONFIG messages
+
+3. components/cmd_console/cmd_console.c:
+   - Added param commands: param list/get/set/save/reset
+   - Added pid command for Master PID tuning
+   - Added servo command for Rudder servo params
+   - Added motor params command for motor settings
+
+4. components/autopilot_common/include/autopilot_common.h:
+   - Renamed all control constants to *_DEFAULT
+
+5. components/can_protocol/include/can_protocol.h:
+   - Added MSG_TYPE_PARAM_CONFIG (6)
+   - Added CAN_ID_PARAM_CONFIG (0x08580001)
+   - Added can_param_config_t structure
+
+SDKCONFIG OPTIMIZATIONS (to fix IRAM overflow):
+- Changed compiler optimization from DEBUG to SIZE
+- Disabled BLE roles: Central, Observer, Broadcaster (only Peripheral needed)
+- Disabled BLE security/encryption (not needed for local boat use)
+- Reduced NimBLE buffer sizes
+- Disabled WiFi IRAM optimizations
+
+BUILD STATUS:
+- Binary size: 0xfaef0 bytes (~1027 KB)
+- App partition: 2% free (tight but working)
+- Compiles without warnings
+
+FSD UPDATES:
+- Section 5.4: Added MSG_TYPE_PARAM_CONFIG (6)
+- Section 5.5: Added Parameter Config message (0x08580001)
+- Section 11.1: Added Parameters characteristic (...9005)
+- Section 11.2: Added parameter commands (0x50-0x53)
+- Section 11.4: Added Parameters characteristic format
+- Appendix A: Added Param Config to CAN quick reference
+- Appendix B: Reorganized with configurable parameters tables
+
+GIT:
+- Branch: feature/NET-rudder-node-network
+- Files modified: 10+ files
+
+================================================================================
+SESSION 8 - 2026-01-14 (Comprehensive Testing + Bug Fix)
+================================================================================
+
+TESTING COMPLETED:
+
+Master Node (192.168.1.118):
+- Console commands: help, status, version, state ✓
+- IMU: heading, imu, yaw rate, roll, pitch ✓
+- Simulation: heading sim N, heading real ✓
+- Heading controls: set heading N, adjust N ✓
+- Magnetometer: magcal get, magcal set X Y Z ✓
+- State control: engage, disengage ✓
+- Fault handling: fault clear ✓
+
+Rudder Node (192.168.1.157):
+- Console commands: help, status, version, state ✓
+- AS5600 encoder: raw angle 1186, angle 0.0° ✓
+- Motor status: enabled, running, direction ✓
+- State control: engage, disengage ✓
+- Calibration: cal enter, cal exit, cal center ✓
+- Fault handling: fault clear ✓
+- Servo control via CAN: +20°, -20°, center ✓
+
+BUG FIXED:
+- master_engage() was passing NULL for preconditions
+- State machine requires valid preconditions to transition IDLE→ENGAGED
+- Fix: Build engage_preconditions_t with heading_valid, etc.
+- Commit: ddd6062
+
+KNOWN ISSUES:
+- Master CAN TX not working (hardware wiring - fix on new board)
+- Rudder faults on CAN timeout (500ms) if no continuous commands (by design)
+- BLE not implemented (BLE-001, BLE-002 TODO)
+
+SERVO TEST RESULTS:
+- Command +20°: Moved from 0° to 19.1° in ~2 seconds
+- Command -20°: Moved from +18° toward -20°
+- Command 0°: Returned to center (0.9°)
+- Deadband: Stops within 1° of target ✓
+
+================================================================================
+SESSION 7 - 2026-01-14 (Boot Display Progress)
+================================================================================
+
+FEATURES IMPLEMENTED:
+- Boot display progress for both Master and Rudder nodes
+- Display initializes FIRST after I2C to show boot status
+- Each component shows status as it initializes
+
+BOOT SEQUENCE (both nodes):
+1. I2C + Display init → Shows "Booting..."
+2. State machine → "State: OK"
+3. WiFi → "WiFi: <IP>" or "WiFi: FAIL"
+4. Sensors (IMU/AS5600) → "IMU: OK" / "AS5600: OK"
+5. CAN → "CAN: OK"
+6. Motor (Rudder only) → "Motor: OK"
+7. Summary screen with 1.5s pause → "All systems OK"
+8. Transition to normal operational display
+
+HARDWARE ISSUE:
+- Master MCU was overheating (5W, super hot)
+- Replaced with spare MCU - now normal 1.2W
+- Code review confirmed no software issues
+- Overheating was hardware failure (bad chip)
+
+MASTER IP CHANGED:
+- New MCU got different DHCP IP
+- Master now at 192.168.1.118 (was .189)
+
+FILES MODIFIED:
+- main/master_node.c - boot_status() function, reordered init
+- main/rudder_node.c - boot_status() function, reordered init
+
+================================================================================
+SESSION 6 - 2026-01-14 (Rudder Display + Motor Testing)
+================================================================================
+
+FEATURES IMPLEMENTED:
+- Rudder node OLED display (128x32, 4 lines x 16 chars)
+- Same SSD1306 driver as Master node
+
+DISPLAY LAYOUT (main/rudder_node.c task_display):
+- Line 0: State (IDLE/ENGAGED/FAULT)
+- Line 1: RUD: +XX.X (actual rudder angle)
+- Line 2: CMD: +XX.X (commanded angle, or ---.- if not engaged)
+- Line 3: IP address (or motor direction when running)
+
+MOTOR TESTING (via USB CAN adapter):
+- Simulated Master heartbeats and rudder commands
+- Tested +30° command: Tracked 0° → 29.1° correctly
+- Multi-turn wrap-around verified working
+- Deadband stops motor within 1° of target
+
+HARDWARE NOTE:
+- Initial display had "hot glue damage" showing garbled output
+- Replaced with new display - working correctly now
+
+================================================================================
+SESSION 5 - 2026-01-14 (Console Reliability Fix)
+================================================================================
+
+BUG FIXED: Telnet debug console timeouts/unresponsive
+
+ROOT CAUSE:
+- Single-byte non-blocking recv() with 10ms loop delay
+- Debug task priority (2) starved by CAN(5), IMU(4), Rudder(4) tasks
+- Each character required separate syscall causing CPU starvation
+- WiFi latency (100-200ms) compounded the issue
+
+FIX (components/network_manager/network_manager.c):
+1. Use select() with 50ms timeout instead of MSG_DONTWAIT recv
+2. Read in 64-byte chunks instead of single bytes
+3. Increased task priority from 2 to 4
+4. Added errno.h for proper error handling
+
+TESTING:
+- OTA'd fix to both Master and Rudder nodes
+- Console now responds instantly on both nodes
+- Verified with multiple commands (status, help, etc.)
+
+================================================================================
+SESSION 4 - 2026-01-14 (Multi-turn Tracking & Motor Test)
+================================================================================
+
+FEATURES IMPLEMENTED:
+- Multi-turn encoder tracking for AS5600 on motor shaft
+- OTA partition support (switched from SINGLE_APP to TWO_OTA)
+- Version bump to 1.1.0
+
+MULTI-TURN TRACKING (main/rudder_node.c):
+- Problem: AS5600 magnet is on motor shaft, not rudder
+- Motor turns 2.25 rotations for full lock-to-lock (810 degrees)
+- AS5600 only reads 0-360 degrees (single rotation)
+- Solution: Track wrap-around crossings to build virtual position
+
+Key Functions:
+- update_multi_turn_position() - detects wrap-around (delta > 2048)
+- init_multi_turn_tracking() - sets boot position as center
+- position_to_rudder_angle() - converts virtual position to rudder angle
+- calibration_recenter() - re-zeros at current position
+
+Constants:
+- MOTOR_TURNS_LOCK_TO_LOCK = 2.25
+- RUDDER_RANGE_DEGREES = 70.0 (±35 degrees)
+- COUNTS_CENTER_TO_LIMIT = 4608 (1.125 turns * 4096)
+
+MOTOR TEST RESULTS (via USB-CAN adapter + SocketCAN):
+- Starboard command (+10°): Moved to +9.0° (within deadband)
+- Port command (-10°): Moved to -9.1° (within deadband)
+- Multi-turn tracking: Raw encoder values tracked correctly
+- Deadband: Motor stops within 1° of target
+
+CAN BUS TESTING SETUP:
+- CANable USB adapter with slcan firmware
+- slcand -o -c -s6 /dev/ttyACM0 can0
+- candump can0 for monitoring
+- cansend can0 for simulating master commands
+
+NODE IPs:
+- Master: 192.168.1.189
+- Rudder: 192.168.1.157
+
+GIT:
+- Branch: feature/NET-rudder-node-network
+- PR #3: https://github.com/Cascadealot/TestAP2/pull/3
+- Commit: cba3f4d (pushed)
+
+CURRENT ISSUE:
+- Master node CAN transceiver NOT transmitting
+- Rudder CAN heartbeats visible (0x10800001) - working
+- Master CAN heartbeats NOT visible (0x10400001) - broken
+- Tried swapping TX/RX pins in software - did not help
+- Master removed for bench testing of CAN transceiver circuit
+- Check: 3.3V power, GPIO5->TXD, GPIO4->RXD, termination
+
+================================================================================
+SESSION 3 - 2026-01-14 (Rudder Node Network Support)
+================================================================================
+
+BUG FIX:
+- Rudder node was missing WiFi/OTA/Debug Console capabilities
+- Design requires network support on ALL nodes, not just Master
+
+CHANGES MADE:
+
+1. main/rudder_node.c:
+   - Added network_manager.h and cmd_console.h includes
+   - Added task_network for console handling
+   - Added network_manager_init() in rudder_node_init()
+   - Added interface functions for console (rudder_get_state, rudder_engage, etc)
+
+2. main/Kconfig.projbuild:
+   - Removed "depends on TESTAP2_NODE_MASTER" from Network Configuration menu
+   - WiFi/OTA settings now available for both node types
+
+3. components/cmd_console/cmd_console.c:
+   - Made console node-aware with #ifdef for MASTER/RUDDER
+   - Added Rudder-specific commands: rudder, motor, set rudder, cal enter/exit/etc
+   - Master commands unchanged
+
+TEST RESULTS:
+- WiFi: Connected to Boathouse24 (IP: 192.168.1.157)
+- OTA: HTTP endpoint returns 200
+- Debug Console: Telnet port 2323 working
+- AS5600: Reading correctly (status 0x67, raw 506)
+- Motor test: Blocked (requires physical calibration)
+
+GIT:
+- Branch: feature/NET-rudder-node-network
+- PR #3: https://github.com/Cascadealot/TestAP2/pull/3
+
+================================================================================
+SESSION 2 - 2026-01-14 (Servo Control Loop)
+================================================================================
+
+FEATURES IMPLEMENTED:
+- RUD-005: Servo control loop with proper encoder-to-angle conversion
+
+CHANGES MADE:
+
+1. Enhanced rudder_node.c encoder-to-rudder angle conversion:
+   - Added encoder raw calibration values (center/port/stbd)
+   - Implemented encoder_raw_to_rudder_angle() with wrap-around handling
+   - Added calibration_capture() and calibration_validate() functions
+   - Uses linear interpolation between calibration points
+
+2. Added calibration command handling in task_can:
+   - CAN_ID_CALIBRATION_CMD (0x085C0001) processing
+   - CAL_CMD_CENTER, CAL_CMD_PORT, CAL_CMD_STARBOARD, CAL_CMD_SAVE
+   - SYS_CMD_CAL_ENTER, SYS_CMD_CAL_EXIT for mode transitions
+
+3. Updated engage preconditions:
+   - rudder_feedback_valid now uses as5600_is_valid()
+   - calibration_valid now uses g_calibration_valid flag
+
+SERVO CONTROL FEATURES (FSD Section 7.5, 7.6):
+- 50Hz control loop rate
+- Hysteresis deadband (1.0° enter, 1.5° exit)
+- Proportional speed control (Kp=10)
+- Slew rate limiting (15°/s)
+- Proper encoder-to-rudder angle mapping with calibration support
+
+IMPLEMENTATION STATUS:
+- Completed: 22/32 features
+- Remaining: 10 features
+
+NEXT PRIORITY FEATURES:
+1. CAN-007: Master heartbeat monitoring
+2. SAFE-001: Stall detection
+3. CAL-001: Calibration NVS persistence
+
+================================================================================
+SESSION 1 - 2026-01-14 (AS5600 Encoder Driver)
+================================================================================
+
+FEATURES IMPLEMENTED:
+- RUD-001: AS5600 encoder initialization
+- RUD-002: AS5600 angle reading
+
+CHANGES MADE:
+
+1. Created AS5600 component (components/as5600/):
+   - as5600.h: Header with register definitions, status structures, API
+   - as5600.c: Implementation with I2C communication, magnet detection
+   - CMakeLists.txt: Component build configuration
+
+2. Updated rudder_node.c:
+   - Added #include "as5600.h"
+   - Added AS5600 initialization in rudder_node_init()
+   - Replaced TODO placeholder with actual encoder reading in task_rudder()
+   - Integrated magnet fault detection per FSD Section 9.3
+
+3. Updated main/CMakeLists.txt:
+   - Added as5600 to REQUIRES list
+
+FEATURES OF AS5600 DRIVER:
+- 12-bit angle measurement (0-4095 counts = 0-360 degrees)
+- Magnet status monitoring (MD, ML, MH bits)
+- I2C mutex support for multi-task safety
+- Zero position offset support for calibration
+- Periodic status checking (every 500ms at 50Hz rate)
+- Fault detection: magnet not detected triggers ERR_SENSOR_FAULT
+
+GIT:
+- Repository created: https://github.com/Cascadealot/TestAP2
+- Branch: feature/RUD-001-002-as5600-encoder
+
+BUILD STATUS:
+- Compiles successfully with idf.py build
+- Binary size: 0xd9bf0 bytes (15% free in partition)
+
+NEXT PRIORITY FEATURES:
+1. RUD-005: Servo control loop (now unblocked by RUD-001/002)
+2. CAN-007: Master heartbeat monitoring
+3. SAFE-001: Stall detection
+
+IMPLEMENTATION STATUS:
+- Completed: 21/32 features
+- Remaining: 11 features
+
+================================================================================
+SESSION 0 - 2026-01-14 (LRA Framework Setup)
+================================================================================
+
+PROJECT ANALYZED AND LRA FRAMEWORK ESTABLISHED
+
+Project: TestAP2 Autopilot
+FSD Version: 1.0.0
+Framework: ESP-IDF v5.1+
+Feature Count: 32 features defined
+
+ARCHITECTURE:
+- 2 nodes over CAN bus (500 kbps, 29-bit extended IDs)
+- Master: IMU (ICM-20948), Display (SSD1306), WiFi/OTA, BLE
+- Rudder: AS5600 encoder, Cytron MD13S motor driver
+
+IMPLEMENTATION STATUS AT SESSION START:
+
+Completed Features (19):
+- CAN-001 through CAN-006: CAN protocol fully implemented
+- MST-001, MST-002: State machine and engage preconditions
+- IMU-001 through IMU-004: IMU driver with simulation mode
+- CTRL-001, CTRL-002: PID controller and rudder command TX
+- NET-001 through NET-004: WiFi, debug console, OTA
+- DISP-001, DISP-002: OLED display
+- RUD-003, RUD-004, RUD-006: Motor driver and timeout handling
+
+Not Yet Implemented (13):
+- CAN-007: Master heartbeat monitoring (rudder node)
+- RUD-001, RUD-002: AS5600 encoder driver
+- RUD-005: Servo control loop (needs encoder)
+- SAFE-001, SAFE-002: Stall detection, drive timeout
+- CAL-001 through CAL-003: Calibration storage
+- BLE-001, BLE-002: Bluetooth LE interface
+- GNSS-001 through GNSS-003: GPS subsystem
+
+KNOWN TODOs IN CODE:
+- rudder_node.c:238-239 - AS5600 encoder reading placeholder
+
+DOCUMENTATION CREATED:
+- CLAUDE.md - Project context file
+- agent/feature-list.json - 32 trackable features
+- agent/coding-prompt.md - Development session instructions
+- docs/claude-progress.txt - This file
+
+NEXT PRIORITY FEATURES:
+1. RUD-001: AS5600 encoder initialization
+2. RUD-002: AS5600 angle reading
+3. RUD-005: Servo control loop (depends on RUD-002)
+4. CAN-007: Master heartbeat monitoring
+
+CODEBASE STATE:
+- Code compiles successfully
+- Build artifacts in build/ directory
+- Git initialized, initial commit pending
+
+================================================================================

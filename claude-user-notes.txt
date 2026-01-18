@@ -1,0 +1,168 @@
+################################################################################
+#                    CLAUDE USER NOTES - Persistent Across Sessions            #
+################################################################################
+
+================================================================================
+PROXMOX SERVER BUILD - "SuperClaude" - 2026-01-15
+================================================================================
+
+PURPOSE: Headless Proxmox VM farm for autonomous Claude Code operations
+         - MCU/embedded software development (ESP-IDF, etc.)
+         - Autopilot software development
+         - Analytical workloads
+         NOT a workstation - VMs created/managed by Claude without human
+
+BUDGET: $2,000 (case, PSU, HDDs already owned)
+
+EXISTING EQUIPMENT:
+- Case (suitable)
+- Power supply (suitable)
+- Multiple 12TB HDDs for storage
+- Workstation: AMD 9900X + 96GB RAM (separate machine)
+
+--------------------------------------------------------------------------------
+COMPONENT RECOMMENDATIONS (HEADLESS SERVER)
+--------------------------------------------------------------------------------
+
+CPU: AMD Ryzen 9 7950X
+  - 16 cores / 32 threads, 4.5GHz base / 5.7GHz boost
+  - AM5 socket, 170W TDP (can power limit to 105W for server use)
+  - Price: ~$450-500
+  - Why: Best core count for parallel VM workloads at this price point
+
+MOTHERBOARD: ASRock Rack B650D4U (RECOMMENDED FOR SERVER)
+  - Price: ~$299 (Newegg) - CHEAPER than consumer boards!
+  - Key feature: IPMI/BMC for out-of-band management
+  - Why IPMI matters for Claude Code server:
+    * Remote console even when OS is dead
+    * Power cycle remotely without physical access
+    * BIOS access over network
+    * Hardware health monitoring
+    * Can manage VMs/server autonomously 24/7
+  - 4x DDR5 DIMM slots (ECC or non-ECC UDIMM)
+  - 4x SATA 6Gb/s for your 12TB drives
+  - 1x M.2 PCIe 5.0 x4 + 1x M.2 PCIe 4.0 x4
+  - Dual 1GbE Intel i210
+  - Micro-ATX (9.6" x 9.6") - fits most cases
+  - Supports Ryzen 9000/8000/7000 up to 170W TDP
+
+  ALTERNATIVE (10GbE networking):
+  - ASRock Rack B650D4U-2L2T/BCM (~$420)
+    Same as above but with dual 10GbE Broadcom NICs
+    Worth it if your network supports 10GbE
+
+  ALTERNATIVE (Mini-ITX with 10GbE):
+  - ASRock Rack AM5D4ID-2T/BCM (~$423)
+    Deep mini-ITX form factor (6.7" x 8.2")
+    Dual 10GbE, IPMI/BMC, PCIe 5.0
+
+MEMORY: 128GB DDR5-4800 ECC UDIMM (4x32GB)
+  - RECOMMENDED: Samsung or Micron DDR5 ECC UDIMM
+    Price: ~$400-450
+  - Why ECC: Server workload, data integrity for VMs
+  - ASRock Rack boards support ECC properly (unlike most consumer boards)
+  - ALTERNATIVE (non-ECC): Corsair/A-Tech DDR5-5600 ~$350
+
+STORAGE: 2x Samsung 990 Pro 2TB NVMe
+  - Price: ~$230 each ($460 total)
+  - VM storage - fast random I/O critical for multiple VMs
+  - Your 12TB HDDs: Bulk storage, backups, ISO images
+
+COOLING: Noctua NH-D15 or equivalent tower cooler
+  - Price: ~$110
+  - 7950X at 170W needs good cooling
+  - Can power-limit to 105W in BIOS for quieter/cooler operation
+
+--------------------------------------------------------------------------------
+ESTIMATED BUDGET (SERVER BUILD)
+--------------------------------------------------------------------------------
+
+Component                          Price (est.)
+-------------------------------------------------
+AMD Ryzen 9 7950X                  $  475
+ASRock Rack B650D4U                $  299  <-- Cheaper than consumer!
+128GB DDR5-4800 ECC (4x32GB)       $  420
+Samsung 990 Pro 2TB x2             $  460
+CPU Cooler (Noctua NH-D15)         $  110
+-------------------------------------------------
+TOTAL                              $1,764
+
+$236 UNDER BUDGET - could upgrade to 10GbE board or add more NVMe.
+
+--------------------------------------------------------------------------------
+WHY ASROCK RACK (vs consumer boards)
+--------------------------------------------------------------------------------
+
+1. IPMI/BMC INCLUDED - Remote management even when OS is dead
+2. PROPER ECC SUPPORT - Data integrity for server workloads
+3. SERVER-GRADE COMPONENTS - Designed for 24/7 operation
+4. CHEAPER - B650D4U at $299 vs X670E Taichi at $480
+5. BETTER FOR HEADLESS - No wasted GPU outputs, focused on server features
+
+Consumer boards (ASUS ROG, Gigabyte AORUS, etc.):
+- No IPMI - need physical access or separate KVM-over-IP device
+- Most don't support ECC properly (even if they claim to)
+- Designed for desktop/gaming, not 24/7 server operation
+- Pay extra for RGB, audio, features you won't use headless
+
+--------------------------------------------------------------------------------
+PURCHASE LINKS
+--------------------------------------------------------------------------------
+
+CPU:
+- Amazon: https://www.amazon.com/AMD-7950X-32-Thread-Unlocked-Processor/dp/B0BBHD5D8Y
+- Newegg: https://www.newegg.com/amd-ryzen-9-7950x
+
+Motherboard:
+- Newegg: https://www.newegg.com/asrock-rack-b650d4u-supports-amd-ryzen-7000-series-processors/p/N82E16813140100
+- Amazon: https://www.amazon.com/AsRock-B650D4U-Micro-ATX-Motherboard-Processors/dp/B0C7MQMTQW
+
+RAM (ECC):
+- Search: "DDR5 ECC UDIMM 32GB" - Samsung, Micron, Kingston Server Premier
+
+NVMe:
+- Amazon: https://www.amazon.com/SAMSUNG-Internal-Expansion-MZ-V9P2T0B-AM/dp/B0BHJJ9Y77
+
+--------------------------------------------------------------------------------
+PROXMOX SETUP FOR CLAUDE CODE VM FARM
+--------------------------------------------------------------------------------
+
+1. INSTALL
+   - Install Proxmox VE on one 990 Pro NVMe
+   - Mirror to second 990 Pro for boot redundancy (optional)
+
+2. STORAGE POOLS
+   - NVMe: ZFS mirror for VM disks (fast I/O)
+   - HDDs: ZFS raidz1 or raidz2 for bulk storage, ISOs, backups
+
+3. NETWORK
+   - Configure IPMI on separate management VLAN (security)
+   - Main NICs for VM traffic
+
+4. VM TEMPLATES FOR CLAUDE CODE
+   - Ubuntu 22.04/24.04 LTS template (general development)
+   - ESP-IDF development template (pre-installed toolchain)
+   - Analytical workload template (Python, Jupyter, etc.)
+   - Clone templates on-demand for tasks
+
+5. AUTOMATION
+   - Proxmox API for VM creation/destruction
+   - Cloud-init for automatic VM configuration
+   - SSH keys for Claude Code access
+
+6. BIOS SETTINGS
+   - Enable IOMMU (AMD-Vi) for PCIe passthrough
+   - Enable SVM Mode for virtualization
+   - Set power limit to 105W for quieter operation (optional)
+
+--------------------------------------------------------------------------------
+SOURCES
+--------------------------------------------------------------------------------
+
+- ServeTheHome Review: https://www.servethehome.com/asrock-rack-am5d4id-2t-bcm-review-an-awesome-amd-ryzen-server-motherboard-broadcom/
+- Newegg B650D4U: https://www.newegg.com/asrock-rack-b650d4u-supports-amd-ryzen-7000-series-processors/p/N82E16813140100
+- ASRock Rack Products: https://www.asrockrack.com/general/products.asp
+- Tom's Hardware Motherboards: https://www.tomshardware.com/best-picks/best-motherboards
+- PC Guide AM5: https://www.pcguide.com/motherboard/guide/best-am5-motherboards/
+
+================================================================================

@@ -1,0 +1,580 @@
+{
+  "project": "TestAP2 Autopilot",
+  "fsd_version": "1.0.0",
+  "last_updated": "2026-01-14T23:45:00",
+  "features": [
+    {
+      "id": "CAN-001",
+      "category": "canbus",
+      "name": "CAN bus initialization",
+      "description": "Initialize ESP32 TWAI peripheral for CAN communication at 500kbps with 29-bit extended IDs",
+      "node": "both",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "TWAI peripheral configured for 500kbps",
+        "29-bit extended ID mode enabled",
+        "TX and RX pins configured per Kconfig",
+        "Bus recovery enabled"
+      ],
+      "fsd_reference": "Section 5.1",
+      "complete": true
+    },
+    {
+      "id": "CAN-002",
+      "category": "canbus",
+      "name": "Master heartbeat transmission",
+      "description": "Transmit master heartbeat (0x10400001) at 10Hz with state, fault, heading, target",
+      "node": "master",
+      "dependencies": ["CAN-001"],
+      "acceptance_criteria": [
+        "Message transmitted every 100ms",
+        "State and fault_code fields populated",
+        "Heading and target in big-endian format",
+        "Sequence counter increments"
+      ],
+      "fsd_reference": "Section 5.5.1",
+      "complete": true
+    },
+    {
+      "id": "CAN-003",
+      "category": "canbus",
+      "name": "Rudder heartbeat transmission",
+      "description": "Transmit rudder heartbeat (0x10800001) at 50Hz with state, angle, motor status",
+      "node": "rudder",
+      "dependencies": ["CAN-001"],
+      "acceptance_criteria": [
+        "Message transmitted every 20ms",
+        "State and fault_code fields populated",
+        "Angle in big-endian format",
+        "Motor status flags correct"
+      ],
+      "fsd_reference": "Section 5.5.2",
+      "complete": true
+    },
+    {
+      "id": "CAN-004",
+      "category": "canbus",
+      "name": "Rudder command handling",
+      "description": "Receive and process rudder command (0x08440001) from master",
+      "node": "rudder",
+      "dependencies": ["CAN-001"],
+      "acceptance_criteria": [
+        "Parse commanded angle from big-endian",
+        "Update last command timestamp",
+        "Apply command to servo loop"
+      ],
+      "fsd_reference": "Section 5.5.3",
+      "complete": true
+    },
+    {
+      "id": "CAN-005",
+      "category": "canbus",
+      "name": "System command handling",
+      "description": "Receive and process system commands (ENGAGE, DISENGAGE, CAL_ENTER, etc.)",
+      "node": "rudder",
+      "dependencies": ["CAN-001"],
+      "acceptance_criteria": [
+        "Parse command byte",
+        "Process state transitions",
+        "Validate preconditions for ENGAGE"
+      ],
+      "fsd_reference": "Section 5.5.4",
+      "complete": true
+    },
+    {
+      "id": "CAN-006",
+      "category": "canbus",
+      "name": "E_STOP handling",
+      "description": "Receive E_STOP (0x00040001) and immediately stop motors, enter FAULTED",
+      "node": "both",
+      "dependencies": ["CAN-001"],
+      "acceptance_criteria": [
+        "Response within 10ms",
+        "Motor immediately stopped",
+        "State transitions to FAULTED"
+      ],
+      "fsd_reference": "Section 5.5.5",
+      "complete": true
+    },
+    {
+      "id": "CAN-007",
+      "category": "canbus",
+      "name": "Master heartbeat monitoring",
+      "description": "Monitor master heartbeat on rudder node, fault after 500ms timeout",
+      "node": "rudder",
+      "dependencies": ["CAN-001"],
+      "acceptance_criteria": [
+        "Track last heartbeat timestamp",
+        "Detect timeout after 500ms",
+        "Stop motor and enter FAULTED on timeout"
+      ],
+      "fsd_reference": "Section 5.7",
+      "complete": true
+    },
+    {
+      "id": "RUD-001",
+      "category": "rudder",
+      "name": "AS5600 encoder initialization",
+      "description": "Initialize AS5600 magnetic encoder on I2C at address 0x36",
+      "node": "rudder",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "I2C communication at 400kHz",
+        "Verify device responds at 0x36",
+        "Read status register for magnet detection"
+      ],
+      "fsd_reference": "Section 4.2",
+      "complete": true
+    },
+    {
+      "id": "RUD-002",
+      "category": "rudder",
+      "name": "AS5600 angle reading",
+      "description": "Read 12-bit angle from AS5600 and convert to degrees",
+      "node": "rudder",
+      "dependencies": ["RUD-001"],
+      "acceptance_criteria": [
+        "Read RAW_ANGLE register (0x0C-0x0D)",
+        "Convert to 0-360 degrees",
+        "Handle I2C errors gracefully"
+      ],
+      "fsd_reference": "Section 4.2",
+      "complete": true
+    },
+    {
+      "id": "RUD-003",
+      "category": "rudder",
+      "name": "Motor driver initialization",
+      "description": "Initialize Cytron MD13S motor driver with PWM and direction GPIO",
+      "node": "rudder",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "LEDC PWM at 20kHz on configured pin",
+        "Direction GPIO configured as output",
+        "Initial state: motor stopped"
+      ],
+      "fsd_reference": "Section 4.8",
+      "complete": true
+    },
+    {
+      "id": "RUD-004",
+      "category": "rudder",
+      "name": "Motor drive function",
+      "description": "Drive motor with speed and direction, respecting state machine",
+      "node": "rudder",
+      "dependencies": ["RUD-003"],
+      "acceptance_criteria": [
+        "Speed 0-100% mapped to PWM duty",
+        "Direction sets GPIO (LOW=port, HIGH=stbd)",
+        "Motor disabled when state doesn't allow"
+      ],
+      "fsd_reference": "Section 4.8",
+      "complete": true
+    },
+    {
+      "id": "RUD-005",
+      "category": "rudder",
+      "name": "Servo control loop",
+      "description": "Closed-loop rudder position control at 50Hz with hysteresis deadband",
+      "node": "rudder",
+      "dependencies": ["RUD-002", "RUD-004"],
+      "acceptance_criteria": [
+        "Control loop runs at 50Hz",
+        "Hysteresis deadband (1.0° enter, 1.5° exit)",
+        "Proportional speed control (Kp=10)",
+        "Slew rate limiting"
+      ],
+      "fsd_reference": "Section 7.5, 7.6",
+      "complete": true
+    },
+    {
+      "id": "RUD-006",
+      "category": "rudder",
+      "name": "Command timeout handling",
+      "description": "Detect missing commands and ramp to center or fault",
+      "node": "rudder",
+      "dependencies": ["CAN-004"],
+      "acceptance_criteria": [
+        "0-200ms: hold commanded position",
+        "200-500ms: ramp to center",
+        ">500ms: stop motor and fault"
+      ],
+      "fsd_reference": "Section 9.4",
+      "complete": true
+    },
+    {
+      "id": "MST-001",
+      "category": "master",
+      "name": "State machine implementation",
+      "description": "Implement system state machine with all states and transitions",
+      "node": "both",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "States: BOOT, IDLE, ENGAGED, CALIBRATION, FAULTED",
+        "All valid transitions per FSD Section 8.2",
+        "Motor enable logic per state",
+        "Fault latching"
+      ],
+      "fsd_reference": "Section 8",
+      "complete": true
+    },
+    {
+      "id": "MST-002",
+      "category": "master",
+      "name": "Engage preconditions",
+      "description": "Validate all preconditions before allowing ENGAGE",
+      "node": "master",
+      "dependencies": ["MST-001"],
+      "acceptance_criteria": [
+        "Valid heading (not NaN, < 500ms old)",
+        "Valid rudder feedback",
+        "Valid calibration (range >= 5°)",
+        "No active faults"
+      ],
+      "fsd_reference": "Section 8.3",
+      "complete": true
+    },
+    {
+      "id": "IMU-001",
+      "category": "imu",
+      "name": "ICM-20948 initialization",
+      "description": "Initialize ICM-20948 9-DOF IMU via I2C",
+      "node": "master",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "I2C at address 0x68",
+        "Verify WHO_AM_I register",
+        "Configure accelerometer and gyroscope ranges",
+        "Configure magnetometer"
+      ],
+      "fsd_reference": "Section 4.1",
+      "complete": true
+    },
+    {
+      "id": "IMU-002",
+      "category": "imu",
+      "name": "Tilt-compensated heading",
+      "description": "Compute tilt-compensated magnetic heading from IMU data",
+      "node": "master",
+      "dependencies": ["IMU-001"],
+      "acceptance_criteria": [
+        "Use accelerometer for roll/pitch",
+        "Apply tilt compensation to magnetometer",
+        "Output heading 0-360° clockwise from north"
+      ],
+      "fsd_reference": "Section 7.1",
+      "complete": true
+    },
+    {
+      "id": "IMU-003",
+      "category": "imu",
+      "name": "Adaptive heading filter",
+      "description": "Apply EMA filter with sea-state adaptive alpha",
+      "node": "master",
+      "dependencies": ["IMU-002"],
+      "acceptance_criteria": [
+        "Calculate variance over 1-second window",
+        "Select alpha based on variance thresholds",
+        "CALM=0.15, NORMAL=0.08, ROUGH=0.05, STORM=0.03"
+      ],
+      "fsd_reference": "Section 7.4",
+      "complete": true
+    },
+    {
+      "id": "IMU-004",
+      "category": "imu",
+      "name": "Heading simulation mode",
+      "description": "Allow simulated heading for testing without physical IMU movement",
+      "node": "master",
+      "dependencies": ["IMU-002"],
+      "acceptance_criteria": [
+        "Command to enable/disable simulation",
+        "Command to set simulated heading",
+        "Filtered heading uses simulated value when enabled"
+      ],
+      "fsd_reference": "N/A (debug feature)",
+      "complete": true
+    },
+    {
+      "id": "CTRL-001",
+      "category": "control",
+      "name": "PID heading controller",
+      "description": "Implement PID controller for heading hold at 10Hz",
+      "node": "master",
+      "dependencies": ["IMU-003"],
+      "acceptance_criteria": [
+        "Kp=0.8, Ki=0.05, Kd=0.5",
+        "Integral anti-windup (limit ±5°)",
+        "Derivative uses yaw rate (not differentiated error)",
+        "Output clamped to ±35°"
+      ],
+      "fsd_reference": "Section 7.2, 7.3",
+      "complete": true
+    },
+    {
+      "id": "CTRL-002",
+      "category": "control",
+      "name": "Rudder command transmission",
+      "description": "Transmit rudder command (0x08440001) at 10Hz when ENGAGED",
+      "node": "master",
+      "dependencies": ["CTRL-001", "CAN-001"],
+      "acceptance_criteria": [
+        "Transmit at 10Hz when ENGAGED",
+        "Include computed rudder angle",
+        "Sequence counter increments"
+      ],
+      "fsd_reference": "Section 5.5.3",
+      "complete": true
+    },
+    {
+      "id": "NET-001",
+      "category": "network",
+      "name": "WiFi station mode",
+      "description": "Connect to WiFi network in station mode",
+      "node": "master",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Connect using Kconfig credentials",
+        "Obtain IP via DHCP",
+        "Handle reconnection on disconnect"
+      ],
+      "fsd_reference": "Section 12",
+      "complete": true
+    },
+    {
+      "id": "NET-002",
+      "category": "network",
+      "name": "Debug console server",
+      "description": "TCP server on port 2323 for debug commands",
+      "node": "master",
+      "dependencies": ["NET-001"],
+      "acceptance_criteria": [
+        "Listen on configured port",
+        "Accept single client connection",
+        "Process commands and send responses"
+      ],
+      "fsd_reference": "Section 12",
+      "complete": true
+    },
+    {
+      "id": "NET-003",
+      "category": "network",
+      "name": "Console commands",
+      "description": "Implement debug console command set",
+      "node": "master",
+      "dependencies": ["NET-002"],
+      "acceptance_criteria": [
+        "status, state, heading, imu commands",
+        "engage, disengage commands",
+        "set heading, adjust commands",
+        "heading sim/real, magcal commands",
+        "fault clear, version, reboot commands"
+      ],
+      "fsd_reference": "Section 12",
+      "complete": true
+    },
+    {
+      "id": "NET-004",
+      "category": "network",
+      "name": "OTA firmware update",
+      "description": "Support over-the-air firmware updates via ESP-IDF OTA",
+      "node": "master",
+      "dependencies": ["NET-001"],
+      "acceptance_criteria": [
+        "OTA server initialized",
+        "Accept firmware upload",
+        "Verify and switch partitions",
+        "Reboot after successful update"
+      ],
+      "fsd_reference": "Section 12",
+      "complete": true
+    },
+    {
+      "id": "DISP-001",
+      "category": "display",
+      "name": "SSD1306 OLED initialization",
+      "description": "Initialize SSD1306 OLED display via I2C",
+      "node": "master",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "I2C at address 0x3C",
+        "Display cleared on init",
+        "4-line text mode (32 pixel height)"
+      ],
+      "fsd_reference": "Section 4.1",
+      "complete": true
+    },
+    {
+      "id": "DISP-002",
+      "category": "display",
+      "name": "Status display",
+      "description": "Display system status at 5Hz",
+      "node": "master",
+      "dependencies": ["DISP-001"],
+      "acceptance_criteria": [
+        "Line 0: Current state",
+        "Line 1: Current heading",
+        "Line 2: Target and error (when ENGAGED)",
+        "Line 3: Status (fault code, simulation mode, IP)"
+      ],
+      "fsd_reference": "N/A",
+      "complete": true
+    },
+    {
+      "id": "SAFE-001",
+      "category": "safety",
+      "name": "Stall detection",
+      "description": "Detect motor stall and trigger fault",
+      "node": "rudder",
+      "dependencies": ["RUD-002", "RUD-004"],
+      "acceptance_criteria": [
+        "Detect < 0.5° movement in 500ms while motor commanded",
+        "Stop motor immediately",
+        "Set fault code ERR_MOTOR_STALL",
+        "Require fault clear to resume"
+      ],
+      "fsd_reference": "Section 9.2",
+      "complete": true
+    },
+    {
+      "id": "SAFE-002",
+      "category": "safety",
+      "name": "Drive timeout protection",
+      "description": "Stop motor if running continuously for too long",
+      "node": "rudder",
+      "dependencies": ["RUD-004"],
+      "acceptance_criteria": [
+        "Track continuous motor run time",
+        "Fault after 5000ms continuous drive",
+        "Set fault code ERR_MOTOR_TIMEOUT"
+      ],
+      "fsd_reference": "Section 9.2",
+      "complete": true
+    },
+    {
+      "id": "CAL-001",
+      "category": "calibration",
+      "name": "Rudder calibration storage",
+      "description": "Store and retrieve rudder calibration in NVS",
+      "node": "rudder",
+      "dependencies": ["RUD-002"],
+      "acceptance_criteria": [
+        "Store center, port, starboard raw values",
+        "Load calibration on boot",
+        "Validate range >= 5° on load"
+      ],
+      "fsd_reference": "Section 12",
+      "complete": true,
+      "notes": "Port/stbd fixed by geometry (±35°), only center stored"
+    },
+    {
+      "id": "CAL-002",
+      "category": "calibration",
+      "name": "Calibration commands",
+      "description": "Handle calibration commands via CAN",
+      "node": "rudder",
+      "dependencies": ["CAL-001", "CAN-001"],
+      "acceptance_criteria": [
+        "CAL_CENTER captures current raw value",
+        "CAL_PORT captures current raw value",
+        "CAL_STBD captures current raw value",
+        "CAL_SAVE persists to NVS"
+      ],
+      "fsd_reference": "Section 5.5.6, 12",
+      "complete": true,
+      "notes": "Port/stbd are fixed geometry, CENTER+SAVE persist to NVS"
+    },
+    {
+      "id": "CAL-003",
+      "category": "calibration",
+      "name": "Magnetometer calibration storage",
+      "description": "Store and retrieve hard-iron offsets in NVS",
+      "node": "master",
+      "dependencies": ["IMU-001"],
+      "acceptance_criteria": [
+        "Store X, Y, Z offsets",
+        "Load on boot",
+        "Apply to all magnetometer readings"
+      ],
+      "fsd_reference": "Section 12",
+      "complete": true,
+      "notes": "Includes soft-iron 3x3 matrix, BLE commands for get/set/save"
+    },
+    {
+      "id": "BLE-001",
+      "category": "ble",
+      "name": "BLE service initialization",
+      "description": "Initialize NimBLE with autopilot service",
+      "node": "master",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "Advertise as 'CascadeAP'",
+        "Service UUID per FSD",
+        "Command, Status, Heading, Rudder, Parameters characteristics"
+      ],
+      "fsd_reference": "Section 11",
+      "complete": true
+    },
+    {
+      "id": "BLE-002",
+      "category": "ble",
+      "name": "BLE command processing",
+      "description": "Process commands written to command characteristic",
+      "node": "master",
+      "dependencies": ["BLE-001"],
+      "acceptance_criteria": [
+        "Parse command byte and parameters",
+        "Execute engage, disengage, set heading, etc.",
+        "Parameter get/set/save/reset commands (0x50-0x53)",
+        "Update status characteristic on change"
+      ],
+      "fsd_reference": "Section 11.2",
+      "complete": true
+    },
+    {
+      "id": "GNSS-001",
+      "category": "gnss",
+      "name": "GNSS UART initialization",
+      "description": "Initialize UART for u-blox GNSS module",
+      "node": "master",
+      "dependencies": [],
+      "acceptance_criteria": [
+        "UART2 at 115200 baud",
+        "Configure for UBX protocol",
+        "Request NAV-PVT at 10Hz"
+      ],
+      "fsd_reference": "Section 10.1, 10.2",
+      "complete": false
+    },
+    {
+      "id": "GNSS-002",
+      "category": "gnss",
+      "name": "UBX-NAV-PVT parsing",
+      "description": "Parse UBX-NAV-PVT messages for position and COG",
+      "node": "master",
+      "dependencies": ["GNSS-001"],
+      "acceptance_criteria": [
+        "Extract fixType, lat, lon, gSpeed, headMot",
+        "Convert units to degrees and knots",
+        "Track fix validity"
+      ],
+      "fsd_reference": "Section 10.3",
+      "complete": false
+    },
+    {
+      "id": "GNSS-003",
+      "category": "gnss",
+      "name": "COG steering mode",
+      "description": "Use COG instead of compass when speed sufficient",
+      "node": "master",
+      "dependencies": ["GNSS-002", "CTRL-001"],
+      "acceptance_criteria": [
+        "COG valid when speed > 1.5 kts and accuracy < 10°",
+        "Blend compass/COG from 1.5-3.0 kts",
+        "Full COG above 3.0 kts"
+      ],
+      "fsd_reference": "Section 10.4",
+      "complete": false
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+# TestAP2 Custom Partition Table with Coredump Support
+# Flash: 4MB, App size: 1.5MB (expanded from 1MB for GNSS support)
+#
+# Memory Map:
+#   0x000000-0x009000: Bootloader
+#   0x009000-0x00D000: NVS (16KB)
+#   0x00D000-0x00F000: OTA data (8KB)
+#   0x00F000-0x010000: PHY init (4KB)
+#   0x010000-0x020000: Coredump (64KB)
+#   0x020000-0x1A0000: OTA_0 (1.5MB)
+#   0x1A0000-0x320000: OTA_1 (1.5MB)
+#   0x320000-0x400000: Unused (896KB)
+#
+# Name,     Type, SubType,  Offset,   Size,    Flags
+nvs,        data, nvs,      0x9000,   0x4000,
+otadata,    data, ota,      0xd000,   0x2000,
+phy_init,   data, phy,      0xf000,   0x1000,
+coredump,   data, coredump, 0x10000,  0x10000,
+ota_0,      app,  ota_0,    0x20000,  0x180000,
+ota_1,      app,  ota_1,    0x1A0000, 0x180000,

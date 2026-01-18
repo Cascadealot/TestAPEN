@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App colors (dark marine theme) -->
+    <color name="background">#1A1A2E</color>
+    <color name="card_background">#16213E</color>
+
+    <!-- Text colors -->
+    <color name="text_primary">#FFFFFF</color>
+    <color name="text_secondary">#8899A6</color>
+
+    <!-- Status colors -->
+    <color name="connected">#4CAF50</color>
+    <color name="disconnected">#F44336</color>
+    <color name="demo_mode">#9C27B0</color>
+
+    <!-- State colors -->
+    <color name="idle">#607D8B</color>
+    <color name="engaged">#4CAF50</color>
+    <color name="faulted">#F44336</color>
+    <color name="calibration">#FF9800</color>
+
+    <!-- Data colors -->
+    <color name="heading">#00BCD4</color>
+    <color name="target">#FFC107</color>
+    <color name="rudder">#2196F3</color>
+
+    <!-- Material theme colors -->
+    <color name="md_theme_primary">#00BCD4</color>
+    <color name="md_theme_onPrimary">#FFFFFF</color>
+    <color name="md_theme_primaryContainer">#004D54</color>
+    <color name="md_theme_onPrimaryContainer">#9EEFFF</color>
+    <color name="md_theme_secondary">#4CAF50</color>
+    <color name="md_theme_background">#1A1A2E</color>
+    <color name="md_theme_surface">#16213E</color>
+    <color name="md_theme_onBackground">#FFFFFF</color>
+    <color name="md_theme_onSurface">#FFFFFF</color>
+</resources>
