@@ -1,0 +1,36 @@
+TestAPEN Test Results - Sun Jan 18 09:05:08 AM EST 2026
+========================================
+
+[INFO] QV-01: Checking all nodes online...
+[PASS] QV-01a: Master node online
+[PASS] QV-01b: Rudder node online
+[PASS] QV-01c: UI node online
+[INFO] QV-02: Checking firmware versions...
+[PASS] QV-02a: Master firmware version contains 'espnow'
+[PASS] QV-02b: Rudder firmware version contains 'espnow'
+[PASS] QV-02c: UI firmware version contains 'espnow'
+[INFO] QV-03: Checking ESP-NOW communication...
+[PASS] QV-03a: Master ESP-NOW initialized
+[PASS] QV-03b: Master TX failures = 0
+[PASS] QV-03c: Rudder ESP-NOW initialized
+[PASS] QV-03d: Rudder receiving messages (RX: 7991)
+[PASS] QV-03e: UI ESP-NOW initialized
+[PASS] QV-03f: UI receiving messages (RX: 55421)
+[INFO] QV-04: Checking system states...
+[PASS] QV-04a: Master in IDLE state
+[FAIL] QV-04b: Rudder in IDLE state - Expected: IDLE, Got: FAULTED
+[INFO] QV-05: Checking for faults...
+[PASS] QV-05a: Master no active fault
+[PASS] QV-05b: Rudder no active fault
+[INFO] QV-06: Checking UI connectivity status...
+[PASS] QV-06a: UI shows Master connected
+[PASS] QV-06b: UI shows Rudder connected
+[INFO] QV-07: Checking MAC address configuration...
+[PASS] QV-07a: Master MAC correctly configured
+[PASS] QV-07b: Rudder MAC correctly configured
+[PASS] QV-07c: UI MAC correctly configured
+[INFO] QV-08: Checking WiFi channel...
+[PASS] QV-08: All nodes on same WiFi channel (9)
+
+========================================
+Summary: PASS=21 FAIL=1 SKIP=0
