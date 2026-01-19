@@ -133,7 +133,7 @@ static TickType_t g_reboot_time = 0;
 
 static size_t cmd_help(char *response, size_t size) {
     return snprintf(response, size,
-        "TestAP2 Master Console Commands:\r\n"
+        "TestAPEN Master Console Commands:\r\n"
         "  status        - Full system status\r\n"
         "  state         - State machine state\r\n"
         "  heading       - Heading information\r\n"
@@ -178,7 +178,7 @@ static size_t cmd_status(char *response, size_t size) {
     master_get_ip_address(ip, sizeof(ip));
 
     return snprintf(response, size,
-        "=== TestAP2 Master Status ===\r\n"
+        "=== TestAPEN Master Status ===\r\n"
         "State: %s\r\n"
         "Fault: %d\r\n"
         "Heading: %.1f deg (raw: %.1f)\r\n"
@@ -536,7 +536,7 @@ static size_t cmd_fault_clear(char *response, size_t size) {
 
 static size_t cmd_version(char *response, size_t size) {
     return snprintf(response, size,
-        "TestAP2 Master Node\r\n"
+        "TestAPEN Master Node\r\n"
         "Version: %s\r\n"
         "FSD: TestAP2.FSD.v1.0.0\r\n",
         master_get_version()
@@ -553,7 +553,7 @@ static size_t cmd_version(char *response, size_t size) {
 
 static size_t cmd_help(char *response, size_t size) {
     return snprintf(response, size,
-        "TestAP2 Rudder Console Commands:\r\n"
+        "TestAPEN Rudder Console Commands:\r\n"
         "  status        - Full system status\r\n"
         "  state         - State machine state\r\n"
         "  rudder        - Rudder angle and motor status\r\n"
@@ -590,7 +590,7 @@ static size_t cmd_status(char *response, size_t size) {
     else if (dir > 0) dir_str = "STBD";
 
     return snprintf(response, size,
-        "=== TestAP2 Rudder Status ===\r\n"
+        "=== TestAPEN Rudder Status ===\r\n"
         "State: %s\r\n"
         "Fault: %d\r\n"
         "Rudder: %.1f deg (cmd: %.1f)\r\n"
@@ -751,7 +751,7 @@ static size_t cmd_fault_clear(char *response, size_t size) {
 
 static size_t cmd_version(char *response, size_t size) {
     return snprintf(response, size,
-        "TestAP2 Rudder Node\r\n"
+        "TestAPEN Rudder Node\r\n"
         "Version: %s\r\n"
         "FSD: TestAP2.FSD.v1.0.0\r\n",
         rudder_get_version()
@@ -768,7 +768,7 @@ static size_t cmd_version(char *response, size_t size) {
 
 static size_t cmd_help(char *response, size_t size) {
     return snprintf(response, size,
-        "TestAP2 UI Console Commands:\r\n"
+        "TestAPEN UI Console Commands:\r\n"
         "  status        - Full system status\r\n"
         "  state         - State machine state\r\n"
         "  display       - Display status\r\n"
@@ -780,6 +780,9 @@ static size_t cmd_help(char *response, size_t size) {
         "  param save    - Save parameters to NVS\r\n"
         "  param reset   - Reset to defaults\r\n"
         "  espnow        - Show ESP-NOW status\r\n"
+        "  btn N         - Simulate button press (0-5)\r\n"
+        "  btn N long    - Simulate long button press\r\n"
+        "  btn list      - Show button ID mapping\r\n"
         "  version       - Show version info\r\n"
         "  reboot        - Reboot device\r\n"
         "  help          - Show this help\r\n"
@@ -791,7 +794,7 @@ static size_t cmd_status(char *response, size_t size) {
     ui_get_ip_address(ip, sizeof(ip));
 
     return snprintf(response, size,
-        "=== TestAP2 UI Status ===\r\n"
+        "=== TestAPEN UI Status ===\r\n"
         "Master: %s (state=%s)\r\n"
         "Rudder: %s (angle=%.1f)\r\n"
         "Heading: %.1f deg\r\n"
@@ -840,9 +843,74 @@ static size_t cmd_fault_clear(char *response, size_t size) {
     );
 }
 
+// External function from ui_node.c
+extern int ui_node_simulate_button(int btn_id, bool long_press);
+
+static size_t cmd_btn(const char *arg, char *response, size_t size) {
+    // btn list - show button mapping
+    if (arg && strcmp(arg, "list") == 0) {
+        return snprintf(response, size,
+            "Button ID Mapping:\r\n"
+            "  0 = DEC10   (-10 degrees)\r\n"
+            "  1 = DEC1    (-1 degree)\r\n"
+            "  2 = ENGAGE  (toggle engage/disengage)\r\n"
+            "  3 = MODE    (cycle display page)\r\n"
+            "  4 = INC1    (+1 degree)\r\n"
+            "  5 = INC10   (+10 degrees)\r\n"
+        );
+    }
+
+    if (!arg || strlen(arg) == 0) {
+        return snprintf(response, size,
+            "Usage: btn <id> [long]\r\n"
+            "  btn 2       - Press engage button\r\n"
+            "  btn 5 long  - Long press +10 button\r\n"
+            "  btn list    - Show button mapping\r\n"
+        );
+    }
+
+    // Parse button ID
+    int btn_id = -1;
+    bool long_press = false;
+
+    // Check for "long" modifier
+    char arg_copy[32];
+    strncpy(arg_copy, arg, sizeof(arg_copy) - 1);
+    arg_copy[sizeof(arg_copy) - 1] = '\0';
+
+    char *space = strchr(arg_copy, ' ');
+    if (space) {
+        *space = '\0';
+        if (strcmp(space + 1, "long") == 0) {
+            long_press = true;
+        }
+    }
+
+    btn_id = atoi(arg_copy);
+
+    if (btn_id < 0 || btn_id > 5) {
+        return snprintf(response, size,
+            "Invalid button ID: %d\r\n"
+            "Valid IDs: 0-5 (use 'btn list' for mapping)\r\n",
+            btn_id
+        );
+    }
+
+    int result = ui_node_simulate_button(btn_id, long_press);
+    if (result == 0) {
+        const char *btn_names[] = {"DEC10", "DEC1", "ENGAGE", "MODE", "INC1", "INC10"};
+        return snprintf(response, size,
+            "Button %d (%s) %s press simulated\r\n",
+            btn_id, btn_names[btn_id], long_press ? "LONG" : "SHORT"
+        );
+    } else {
+        return snprintf(response, size, "Button simulation failed\r\n");
+    }
+}
+
 static size_t cmd_version(char *response, size_t size) {
     return snprintf(response, size,
-        "TestAP2 UI Node\r\n"
+        "TestAPEN UI Node\r\n"
         "Version: %s\r\n"
         "FSD: TestAP2.FSD.v1.0.0\r\n",
         ui_get_version()
@@ -1329,6 +1397,12 @@ size_t console_process_command(const char *cmd, char *response, size_t response_
     }
     else if (strcmp(cmd, "buttons") == 0) {
         return cmd_buttons(response, response_size);
+    }
+    else if (strcmp(cmd, "btn") == 0) {
+        return cmd_btn(NULL, response, response_size);
+    }
+    else if (strncmp(cmd, "btn ", 4) == 0) {
+        return cmd_btn(cmd + 4, response, response_size);
     }
 #endif
 

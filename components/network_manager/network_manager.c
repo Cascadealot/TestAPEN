@@ -10,6 +10,7 @@
 #include "esp_ota_ops.h"
 #include "esp_http_server.h"
 #include "esp_netif.h"
+#include "esp_partition.h"
 #include "nvs_flash.h"
 #include "lwip/sockets.h"
 
@@ -139,7 +140,7 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
     const esp_app_desc_t *app_desc = esp_app_get_description();
     char response[256];
     snprintf(response, sizeof(response),
-             "TestAP2 Status\n"
+             "TestAPEN Status\n"
              "Version: %s\n"
              "IDF: %s\n"
              "IP: " IPSTR "\n",
@@ -147,6 +148,68 @@ static esp_err_t status_get_handler(httpd_req_t *req) {
              app_desc->idf_ver,
              IP2STR(&g_ip_info.ip));
     httpd_resp_sendstr(req, response);
+    return ESP_OK;
+}
+
+/*============================================================================
+ * Coredump HTTP Handler - Download crash dump via OTA
+ *============================================================================*/
+
+static esp_err_t coredump_get_handler(httpd_req_t *req) {
+    ESP_LOGI(TAG, "Coredump download requested");
+
+    // Find coredump partition
+    const esp_partition_t *coredump_part = esp_partition_find_first(
+        ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_DATA_COREDUMP, NULL);
+
+    if (coredump_part == NULL) {
+        ESP_LOGE(TAG, "Coredump partition not found");
+        httpd_resp_send_err(req, HTTPD_404_NOT_FOUND, "No coredump partition");
+        return ESP_FAIL;
+    }
+
+    ESP_LOGI(TAG, "Coredump partition: offset=0x%lx, size=%lu",
+             coredump_part->address, coredump_part->size);
+
+    // Set response headers for binary download
+    httpd_resp_set_type(req, "application/octet-stream");
+    httpd_resp_set_hdr(req, "Content-Disposition", "attachment; filename=coredump.bin");
+
+    // Read and send partition contents in chunks
+    char *buf = malloc(1024);
+    if (buf == NULL) {
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Out of memory");
+        return ESP_FAIL;
+    }
+
+    size_t offset = 0;
+    size_t remaining = coredump_part->size;
+
+    while (remaining > 0) {
+        size_t to_read = (remaining > 1024) ? 1024 : remaining;
+
+        esp_err_t err = esp_partition_read(coredump_part, offset, buf, to_read);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Partition read failed at offset %u: %s", offset, esp_err_to_name(err));
+            free(buf);
+            return ESP_FAIL;
+        }
+
+        if (httpd_resp_send_chunk(req, buf, to_read) != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to send chunk");
+            free(buf);
+            return ESP_FAIL;
+        }
+
+        offset += to_read;
+        remaining -= to_read;
+    }
+
+    // End chunked response
+    httpd_resp_send_chunk(req, NULL, 0);
+
+    free(buf);
+    ESP_LOGI(TAG, "Coredump sent: %lu bytes", coredump_part->size);
     return ESP_OK;
 }
 
@@ -173,8 +236,18 @@ static void start_http_server(void) {
         };
         httpd_register_uri_handler(g_http_server, &status_uri);
 
+        // Coredump endpoint
+        httpd_uri_t coredump_uri = {
+            .uri = "/coredump",
+            .method = HTTP_GET,
+            .handler = coredump_get_handler,
+            .user_ctx = NULL
+        };
+        httpd_register_uri_handler(g_http_server, &coredump_uri);
+
         ESP_LOGI(TAG, "HTTP server started on port 80");
         ESP_LOGI(TAG, "OTA: curl -X POST --data-binary @firmware.bin http://<ip>/update");
+        ESP_LOGI(TAG, "Coredump: curl http://<ip>/coredump -o coredump.bin");
     }
 }
 
@@ -221,7 +294,7 @@ static void debug_server_task(void *pvParameters) {
                 g_cmd_len = 0;
 
                 // Send welcome message
-                const char *welcome = "TestAP2 Debug Console\r\nType 'help' for commands\r\n";
+                const char *welcome = "TestAPEN Debug Console\r\nType 'help' for commands\r\n";
                 send(g_debug_client, welcome, strlen(welcome), 0);
             }
         }
@@ -373,7 +446,7 @@ esp_err_t network_manager_init(const char *ssid, const char *password,
 
     // Start debug console server
     g_debug_port = debug_port;
-    xTaskCreate(debug_server_task, "debug_srv", 4096, NULL, 4, &g_debug_task);
+    xTaskCreate(debug_server_task, "debug_srv", 8192, NULL, 4, &g_debug_task);
 
     return ESP_OK;
 }

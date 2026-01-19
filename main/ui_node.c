@@ -273,6 +273,20 @@ static void process_button_action(button_id_t btn, bool long_press) {
     }
 }
 
+/**
+ * @brief Simulate a button press (for console testing)
+ * @param btn_id Button ID (0-5): 0=DEC10, 1=DEC1, 2=ENGAGE, 3=MODE, 4=INC1, 5=INC10
+ * @param long_press True for long press simulation
+ * @return 0 on success, -1 on invalid button
+ */
+int ui_node_simulate_button(int btn_id, bool long_press) {
+    if (btn_id < 0 || btn_id >= BTN_COUNT) {
+        return -1;
+    }
+    process_button_action((button_id_t)btn_id, long_press);
+    return 0;
+}
+
 /*============================================================================
  * ESP-NOW Functions
  *============================================================================*/

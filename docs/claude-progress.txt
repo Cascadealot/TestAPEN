@@ -6,9 +6,9 @@ PROJECT: TestAPEN - Tri-node marine autopilot with ESP-NOW (ESP-IDF)
 REPO: https://github.com/Cascadealot/TestAPEN
 BRANCH: feature/remove-safety-for-testing
 FSD: docs/TestAP2.FSD.v1.0.0.md (inherited from TestAP2)
-FW VERSION: TEST-RECT-1.0 (UI Node e-Paper test)
+FW VERSION: 1.1.0-espnow (UI Node with button simulation)
 
-STATUS: e-Paper display WORKING - text and graphics render correctly
+STATUS: UI Node fully functional - telnet, display, button simulation working
 
 ================================================================================
 SESSION 17 - 2026-01-19 (e-Paper Display Fix)
@@ -56,11 +56,70 @@ GIT:
 - Pushed to: origin/feature/remove-safety-for-testing
 
 NEXT STEPS:
-- Restore full ui_node.c functionality (currently minimal test version)
-- Test button input
-- Integrate ESP-NOW heartbeat display
+- Test physical buttons with new simulation capability
+- Implement partial e-Paper refresh (avoid full display flash)
+- Complete boat testing with all three nodes
 
 ================================================================================
+SESSION 18 - 2026-01-19 (Button Simulation & Telnet Fix)
+================================================================================
+
+TELNET FIX:
+- Debug console (port 2323) was not responding on UI node
+- Root cause: Insufficient task stack size (4096 bytes)
+- Fix: Increased debug_server_task stack to 8192 bytes
+- File: components/network_manager/network_manager.c line 449
+
+BRANDING UPDATE (TestAP2 → TestAPEN):
+- Updated all runtime-visible strings from "TestAP2" to "TestAPEN"
+- Files modified:
+  * components/network_manager/network_manager.c (welcome banner, status page)
+  * components/cmd_console/cmd_console.c (help text, status headers)
+- FSD document references kept as "TestAP2.FSD.v1.0.0" (actual filename)
+
+BUTTON SIMULATION FEATURE:
+- Added telnet command to simulate button presses without physical access
+- Enables automated testing of all UI node button functions
+
+New commands:
+  btn list      - Show button ID to function mapping
+  btn N         - Simulate short press of button N (0-5)
+  btn N long    - Simulate long press of button N
+
+Button ID mapping:
+  0 = DEC10   (-10 degrees)
+  1 = DEC1    (-1 degree)
+  2 = ENGAGE  (toggle engage/disengage)
+  3 = MODE    (cycle display page)
+  4 = INC1    (+1 degree)
+  5 = INC10   (+10 degrees)
+
+FILES MODIFIED:
+- main/ui_node.c
+  * Added ui_node_simulate_button(int btn_id, bool long_press) function
+  * Exposes process_button_action() for console testing
+
+- components/cmd_console/cmd_console.c
+  * Added cmd_btn() function with subcommands
+  * Added extern declaration for ui_node_simulate_button()
+  * Updated help text with btn commands
+  * Added command routing for btn/btn N
+
+TESTING RESULTS (all passed):
+  | Test       | Command | Before      | After       |
+  |------------|---------|-------------|-------------|
+  | Engage     | btn 2   | IDLE        | ENGAGED     |
+  | +10°       | btn 5   | Tgt: 244.7° | Tgt: 254.7° |
+  | -1°        | btn 1   | Tgt: 254.7° | Tgt: 253.7° |
+  | Disengage  | btn 2   | ENGAGED     | IDLE        |
+  | Page cycle | btn 3   | Page 0      | Page 1      |
+
+================================================================================
+
+PREVIOUS (Session 17 - e-Paper Display Fix):
+- Fixed coordinate transformation for landscape mode
+- Fixed font bit order (mirroring issue)
+- Commit: 9e5571b
 
 PREVIOUS (Session 16 - UiNode Implementation Phase 1):
 - Created UI Node as third node type for TestAP2
