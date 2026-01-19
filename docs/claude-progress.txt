@@ -8,7 +8,85 @@ BRANCH: feature/remove-safety-for-testing
 FSD: docs/TestAPEN.FSD.v1.0.0.md (inherited from TestAP2)
 FW VERSION: 1.1.0-espnow (UI Node with button simulation)
 
-STATUS: UI Node fully functional - telnet, display, button simulation working
+STATUS: TestAPEN2 created - Arduino-based UI Node with GxEPD2 for reliable e-paper
+
+================================================================================
+SESSION 19 - 2026-01-19 (TestAPEN2 Arduino UI Node)
+================================================================================
+
+DECISION: Switched UI Node from ESP-IDF to Arduino framework
+
+PROBLEM:
+- Custom e-paper driver in ESP-IDF had persistent issues:
+  * Corrupted characters on display
+  * Horizontal misalignment
+  * Partial refresh not working reliably
+- Time spent debugging custom driver not productive
+
+SOLUTION:
+- Created new project: /home/cas/TestAPEN2/
+- Uses Arduino IDE 2.3.7 with ESP32 board support
+- Uses GxEPD2 library (battle-tested, reliable e-paper support)
+- Master and Rudder nodes stay on ESP-IDF (working fine)
+- UI Node moves to Arduino for display reliability
+
+NEW PROJECT STRUCTURE:
+TestAPEN2/
+├── README.md              # Project documentation
+├── .gitignore             # Build artifacts, credentials
+└── UiNode/
+    ├── UiNode.ino         # Main Arduino sketch (963 lines)
+    └── credentials.h      # WiFi/MAC template
+
+FEATURES IMPLEMENTED:
+1. e-Paper Display (GxEPD2)
+   - GxEPD2_290_GDEY029T94 driver for SSD1680 2.9" display
+   - Full refresh and partial refresh support
+   - 3 pages: Autopilot, Navigation, System
+   - Smart update (only refresh changed content)
+
+2. ESP-NOW Communication
+   - Receives Master heartbeat (heading, target, state, fault)
+   - Receives Rudder heartbeat (angle, motor status)
+   - Sends UI commands to Master (engage, disengage, adjust heading)
+   - Compatible with TestAPEN message format
+
+3. Telnet Debug Console (port 2323)
+   - Commands: help, status, espnow, wifi, btn, refresh, reboot
+   - Button simulation for automated testing
+   - Full system status display
+
+4. OTA Updates
+   - HTTP OTA on port 80 (web form + curl --data-binary)
+   - ArduinoOTA support for IDE uploads
+   - Status page at http://<ip>/
+
+5. Button Handling
+   - 6 buttons: DEC10, DEC1, ENGAGE, MODE, INC1, INC10
+   - Debouncing (30ms)
+   - Long press detection (1000ms)
+   - Auto-repeat while held (200ms)
+
+PIN ASSIGNMENTS:
+  e-Paper: BUSY=4, RST=16, DC=17, CS=5, CLK=18, DIN=23
+  Buttons: DEC10=36, DEC1=39, ENGAGE=34, MODE=35, INC1=32, INC10=33
+
+SETUP REQUIREMENTS:
+1. Arduino IDE 2.3.7 installed at: ~/apps/arduino-ide_2.3.7_Linux_64bit/
+2. ESP32 board support from Espressif
+3. GxEPD2 library by Jean-Marc Zingg
+4. Update WIFI_SSID, WIFI_PASS, masterMAC, rudderMAC in sketch
+
+GIT:
+- New repo initialized at /home/cas/TestAPEN2
+- Commit: 890f4e1 "Initial TestAPEN2 UI Node - Arduino with GxEPD2"
+
+NEXT STEPS:
+- Configure WiFi credentials and node MACs
+- Flash UI Node via USB (first time)
+- Verify display rendering with GxEPD2
+- Test ESP-NOW communication with Master node
+- Verify OTA updates work
 
 ================================================================================
 SESSION 17 - 2026-01-19 (e-Paper Display Fix)
