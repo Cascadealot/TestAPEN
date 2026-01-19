@@ -110,6 +110,19 @@ static uint32_t g_last_full_refresh_ms __attribute__((unused)) = 0;
 #define PARTIAL_REFRESH_MS      2000    // Partial refresh every 2 seconds
 #define FULL_REFRESH_MS         60000   // Full refresh every 60 seconds
 
+// Previous display values for smart redraw (only update what changed)
+static struct {
+    float heading;
+    float target_heading;
+    float rudder_angle;
+    uint8_t master_state;
+    uint8_t fault_code;
+    bool master_connected;
+    bool rudder_connected;
+    display_page_t page;
+    bool initialized;
+} g_prev_display = {0};
+
 /*============================================================================
  * ESP-NOW Command State
  *============================================================================*/
@@ -381,6 +394,26 @@ static void check_node_timeouts(void) {
 
 static bool g_epaper_initialized = false;
 
+/**
+ * @brief Clear a rectangular region of the display (fill with white)
+ */
+static void clear_region(int x, int y, int w, int h) {
+    for (int py = y; py < y + h && py < EPAPER_HEIGHT; py++) {
+        for (int px = x; px < x + w && px < EPAPER_WIDTH; px++) {
+            epaper_set_pixel(px, py, false);  // false = white
+        }
+    }
+}
+
+/**
+ * @brief Check if float value has changed significantly (>0.05 difference)
+ */
+static bool float_changed(float a, float b) {
+    float diff = a - b;
+    if (diff < 0) diff = -diff;
+    return diff > 0.05f;
+}
+
 static void draw_status_bar(void) {
     const char *m_status = g_master_status.connected ? "OK" : "--";
     const char *r_status = g_rudder_status.connected ? "OK" : "--";
@@ -452,6 +485,12 @@ static void draw_page_system(void) {
     epaper_printf(0, 104, 1, "Version: %s", FIRMWARE_VERSION);
 }
 
+/**
+ * @brief Smart display update - only redraws values that changed
+ *
+ * For PAGE_AUTOPILOT: Only updates heading, target, rudder values that changed
+ * For page changes or other pages: Does full redraw
+ */
 static void display_update(void) {
     if (!g_epaper_initialized) {
         ESP_LOGW(TAG, "e-Paper not initialized");
@@ -459,31 +498,127 @@ static void display_update(void) {
         return;
     }
 
-    ESP_LOGI(TAG, "Updating display (page %d)...", g_current_page);
+    bool need_full_redraw = !g_prev_display.initialized ||
+                            g_prev_display.page != g_current_page ||
+                            g_prev_display.master_connected != g_master_status.connected ||
+                            g_prev_display.rudder_connected != g_rudder_status.connected;
 
-    epaper_clear();
-    draw_status_bar();
+    if (need_full_redraw) {
+        // Full redraw required
+        ESP_LOGI(TAG, "Full display update (page %d)...", g_current_page);
 
-    switch (g_current_page) {
-        case PAGE_AUTOPILOT:
-            draw_page_autopilot();
-            break;
+        epaper_clear();
+        draw_status_bar();
 
-        case PAGE_NAVIGATION:
-            draw_page_navigation();
-            break;
+        switch (g_current_page) {
+            case PAGE_AUTOPILOT:
+                draw_page_autopilot();
+                break;
 
-        case PAGE_SYSTEM:
-            draw_page_system();
-            break;
+            case PAGE_NAVIGATION:
+                draw_page_navigation();
+                break;
 
-        default:
-            break;
+            case PAGE_SYSTEM:
+                draw_page_system();
+                break;
+
+            default:
+                break;
+        }
+
+        // Use full refresh for complete redraw
+        epaper_reset_partial();
+        epaper_update();
+
+    } else if (g_current_page == PAGE_AUTOPILOT) {
+        // Smart partial update for autopilot page
+        ESP_LOGI(TAG, "Partial display update...");
+        bool any_change = false;
+
+        // Check and update heading (font size 2 = 16px height, ~10 chars wide)
+        if (float_changed(g_heading, g_prev_display.heading)) {
+            clear_region(0, 12, 168, 20);  // Clear HDG area
+            epaper_printf(0, 12, 2, "HDG:%5.1f", g_heading);
+            any_change = true;
+        }
+
+        // Check and update target heading
+        if (float_changed(g_target_heading, g_prev_display.target_heading)) {
+            clear_region(168, 12, 128, 20);  // Clear TGT area
+            epaper_printf(168, 12, 2, "TGT:%5.1f", g_target_heading);
+            any_change = true;
+        }
+
+        // Check and update rudder angle
+        if (float_changed(g_rudder_angle, g_prev_display.rudder_angle)) {
+            clear_region(0, 44, 200, 20);  // Clear RUD area
+            const char *dir = "";
+            if (g_rudder_angle > 0.5f) dir = "STBD";
+            else if (g_rudder_angle < -0.5f) dir = "PORT";
+            epaper_printf(0, 44, 2, "RUD:%+5.1f %s", g_rudder_angle, dir);
+            any_change = true;
+        }
+
+        // Check and update state
+        if (g_master_status.state != g_prev_display.master_state ||
+            float_changed(g_target_heading - g_heading,
+                         g_prev_display.target_heading - g_prev_display.heading)) {
+            clear_region(0, 76, 296, 12);  // Clear state/error area
+            const char *state_str = state_to_string((system_state_t)g_master_status.state);
+            float error = g_target_heading - g_heading;
+            while (error > 180.0f) error -= 360.0f;
+            while (error < -180.0f) error += 360.0f;
+            epaper_printf(0, 76, 1, "State: %s  Err: %+.1f", state_str, error);
+            any_change = true;
+        }
+
+        // Check and update fault code
+        if (g_master_status.fault_code != g_prev_display.fault_code) {
+            clear_region(0, 90, 200, 12);  // Clear fault area
+            if (g_master_status.fault_code != 0) {
+                epaper_printf(0, 90, 1, "FAULT: 0x%02X", g_master_status.fault_code);
+            }
+            any_change = true;
+        }
+
+        if (any_change) {
+            // Use partial refresh for changed regions
+            epaper_update_dirty();
+        } else {
+            ESP_LOGI(TAG, "No display changes detected");
+        }
+    } else {
+        // Other pages - do full redraw for now
+        ESP_LOGI(TAG, "Full display update (page %d)...", g_current_page);
+        epaper_clear();
+        draw_status_bar();
+
+        switch (g_current_page) {
+            case PAGE_NAVIGATION:
+                draw_page_navigation();
+                break;
+            case PAGE_SYSTEM:
+                draw_page_system();
+                break;
+            default:
+                break;
+        }
+
+        epaper_update();
     }
 
-    // Use dirty region tracking for partial refresh
-    // Falls back to full refresh if dirty region is large
-    epaper_update_dirty();
+    // Update previous display values
+    g_prev_display.heading = g_heading;
+    g_prev_display.target_heading = g_target_heading;
+    g_prev_display.rudder_angle = g_rudder_angle;
+    g_prev_display.master_state = g_master_status.state;
+    g_prev_display.fault_code = g_master_status.fault_code;
+    g_prev_display.master_connected = g_master_status.connected;
+    g_prev_display.rudder_connected = g_rudder_status.connected;
+    g_prev_display.page = g_current_page;
+    g_prev_display.initialized = true;
+
     g_display_needs_update = false;
     ESP_LOGI(TAG, "Display update complete");
 }
