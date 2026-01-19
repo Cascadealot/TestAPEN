@@ -105,6 +105,12 @@ bool epaper_is_busy(void);
  */
 uint8_t* epaper_get_framebuffer(void);
 
+/**
+ * @brief Draw diagnostic test pattern
+ * Draws border, crosshairs, corner markers, and labels
+ */
+void epaper_test_pattern(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -441,27 +441,35 @@ void epaper_update(void) {
 }
 
 void epaper_set_pixel(int x, int y, bool black) {
-    // Landscape coordinates: x = 0-295, y = 0-127
+    // LANDSCAPE MODE: 296 wide x 128 tall (matching GxEPD2 setRotation(1))
+    // User coordinates: x = 0-295 (horizontal), y = 0-127 (vertical)
+    //
+    // Adafruit_GFX rotation 1 formula:
+    //   native_x = WIDTH - 1 - y   (WIDTH = native width = 128)
+    //   native_y = x
+    //
+    // Native portrait: 128 wide (X) x 296 tall (Y)
+
     if (x < 0 || x >= EPAPER_WIDTH || y < 0 || y >= EPAPER_HEIGHT) {
         return;
     }
 
-    // Rotation for landscape mode - matching GxEPD2 rotation 1
-    int rotated_x = (NATIVE_WIDTH - 1) - y;     // 127 - y
-    int rotated_y = x;                           // x
+    // Transform to native portrait coordinates (Adafruit rotation 1)
+    int native_x = (NATIVE_WIDTH - 1) - y;  // 127 - y
+    int native_y = x;
 
-    // Buffer layout: byte_idx = rotated_x/8 + rotated_y * 16
-    int byte_idx = (rotated_x / 8) + (rotated_y * (NATIVE_WIDTH / 8));
-    int bit_idx = 7 - (rotated_x % 8);  // MSB = leftmost pixel
+    // Framebuffer: row-major, 16 bytes per row, MSB = leftmost pixel
+    int byte_idx = (native_x / 8) + (native_y * 16);
+    int bit_idx = 7 - (native_x % 8);  // MSB = leftmost pixel
 
     if (byte_idx < 0 || byte_idx >= EPAPER_FB_SIZE) {
-        return;  // Safety check
+        return;
     }
 
     if (black) {
-        s_framebuffer[byte_idx] &= ~(1 << bit_idx);
+        s_framebuffer[byte_idx] &= ~(1 << bit_idx);  // 0 = black
     } else {
-        s_framebuffer[byte_idx] |= (1 << bit_idx);
+        s_framebuffer[byte_idx] |= (1 << bit_idx);   // 1 = white
     }
 }
 
@@ -472,19 +480,19 @@ void epaper_draw_char(int x, int y, char c, int size) {
 
     const uint8_t *glyph = font_8x8[c - 32];
 
+    // No rotation here - set_pixel handles coordinate transformation
+    // Font: row 0-7 = top to bottom, col 0-7 = left to right
+    // Bit 0 = leftmost pixel of each row (font is designed this way)
     for (int row = 0; row < 8; row++) {
         for (int col = 0; col < 8; col++) {
-            // Mirror col to fix character horizontal mirroring
-            int mirror_col = 7 - col;
-            bool black = (glyph[row] >> (7 - col)) & 0x01;
+            bool black = (glyph[row] >> col) & 0x01;
 
             if (size == 1) {
-                epaper_set_pixel(x + mirror_col, y + row, black);
+                epaper_set_pixel(x + col, y + row, black);
             } else {
-                // Scale up
                 for (int sy = 0; sy < size; sy++) {
                     for (int sx = 0; sx < size; sx++) {
-                        epaper_set_pixel(x + mirror_col * size + sx, y + row * size + sy, black);
+                        epaper_set_pixel(x + col * size + sx, y + row * size + sy, black);
                     }
                 }
             }
@@ -540,4 +548,29 @@ bool epaper_is_busy(void) {
 
 uint8_t* epaper_get_framebuffer(void) {
     return s_framebuffer;
+}
+
+// Simple rectangle test - no text, just a rectangle
+void epaper_test_pattern(void) {
+    ESP_LOGI(TAG, "=== SIMPLE RECTANGLE TEST ===");
+
+    epaper_clear();  // All white
+
+    // Draw a simple filled rectangle in the center
+    // Rectangle: 100 pixels wide, 50 pixels tall, centered
+    int rect_w = 100;
+    int rect_h = 50;
+    int rect_x = (EPAPER_WIDTH - rect_w) / 2;   // ~98
+    int rect_y = (EPAPER_HEIGHT - rect_h) / 2;  // ~39
+
+    ESP_LOGI(TAG, "Drawing rectangle at (%d,%d) size %dx%d", rect_x, rect_y, rect_w, rect_h);
+
+    for (int y = rect_y; y < rect_y + rect_h; y++) {
+        for (int x = rect_x; x < rect_x + rect_w; x++) {
+            epaper_set_pixel(x, y, true);  // black
+        }
+    }
+
+    epaper_update();
+    ESP_LOGI(TAG, "Rectangle test complete");
 }
