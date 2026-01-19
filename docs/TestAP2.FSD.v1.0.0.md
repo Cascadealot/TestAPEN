@@ -31,9 +31,9 @@
 9. Safety Protections
 10. GNSS Subsystem
 11. BLE Interface
-12. Network Debugging and OTA
-13. Calibration
-14. Acceptance Criteria
+12. Calibration
+13. Acceptance Criteria
+14. Self Validating Agents
 15. Appendices
 
 ------
@@ -875,6 +875,184 @@ ALL required:
 | AC-11 | Network console connects within 2 seconds | `telnet` |
 | AC-12 | Low voltage warning at 22V | Simulate |
 | AC-13 | GNSS loss does not trigger FAULTED | Disconnect GNSS |
+
+------
+
+## 14. Self Validating Agents
+
+This section describes the mechanisms by which each node validates its own operation and the health of other nodes in the system. Self-validation ensures reliable autonomous operation and safe degradation when faults occur.
+
+### 14.1 Heartbeat Monitoring
+
+Each node broadcasts periodic heartbeat messages to signal operational status. Other nodes monitor these heartbeats to detect failures.
+
+#### 14.1.1 Heartbeat Sources
+
+| Node | Message | Rate | Content |
+|------|---------|------|---------|
+| Master | Master Heartbeat | 10 Hz | State, fault code, heading, target, sequence, flags |
+| Rudder | Rudder Heartbeat | 50 Hz | State, fault code, rudder angle, motor status, sequence |
+| UI | (Monitor only) | N/A | UI node receives heartbeats but does not transmit them |
+
+#### 14.1.2 Heartbeat Content
+
+**Master Heartbeat (8 bytes):**
+- `state` (1 byte): Current system state (IDLE, ENGAGED, etc.)
+- `fault_code` (1 byte): Active fault or 0x00
+- `heading_x10` (2 bytes, BE): Current heading × 10
+- `target_x10` (2 bytes, BE): Target heading × 10
+- `sequence` (1 byte): Incrementing counter for loss detection
+- `flags` (1 byte): GNSS_VALID, IMU_VALID, etc.
+
+**Rudder Heartbeat (8 bytes):**
+- `state` (1 byte): Rudder node state
+- `fault_code` (1 byte): Active fault or 0x00
+- `angle_x10` (2 bytes, BE): Rudder angle × 10
+- `motor_status` (1 byte): Motor running, direction, stalled
+- `sequence` (1 byte): Incrementing counter
+- `reserved` (2 bytes)
+
+### 14.2 Timeout Detection and Fault Handling
+
+#### 14.2.1 Timeout Thresholds
+
+| Timeout | Duration | Action |
+|---------|----------|--------|
+| Heartbeat loss | 500ms | Transition to FAULTED state |
+| Command timeout | 200ms | Rudder node disengages if no command received |
+| Stall detection | 500ms | Motor stopped, fault raised |
+| Drive timeout | 5000ms | Motor stopped if running continuously |
+
+#### 14.2.2 Fault Response Matrix
+
+| Detecting Node | Fault Condition | Response |
+|----------------|-----------------|----------|
+| Rudder | Master heartbeat lost | Stop motor, enter FAULTED |
+| Rudder | Command timeout (while ENGAGED) | Stop motor, enter IDLE |
+| Rudder | Motor stall detected | Stop motor, raise FAULT_STALLED |
+| Master | IMU failure | Raise FAULT_IMU, continue monitoring |
+| Master | Heading invalid | Prevent ENGAGE, clear if in ENGAGED |
+| UI | Master heartbeat lost | Display "Master: DISCONNECTED" |
+| UI | Rudder heartbeat lost | Display "Rudder: DISCONNECTED" |
+
+### 14.3 State Validation Checks
+
+Each node validates its internal state before critical operations.
+
+#### 14.3.1 Master Node Validations
+
+| Check | Condition | Enforced At |
+|-------|-----------|-------------|
+| Heading valid | Non-NaN, within 0-360° | Before ENGAGE |
+| IMU initialized | Sensor responding | At boot |
+| Target reasonable | Within 0-360° | Command processing |
+| State transition valid | Per state machine | All transitions |
+
+#### 14.3.2 Rudder Node Validations
+
+| Check | Condition | Enforced At |
+|-------|-----------|-------------|
+| Encoder valid | Reading within range | Continuous |
+| Calibration valid | Port/Stbd limits set | Before ENGAGE |
+| Motor current normal | Below stall threshold | Motor running |
+| Rudder within limits | ±35° absolute max | Command execution |
+
+#### 14.3.3 UI Node Validations
+
+| Check | Condition | Enforced At |
+|-------|-----------|-------------|
+| Display initialized | SPI communication OK | At boot |
+| Button debounced | Stable for 20ms | Button press |
+| Network connected | WiFi associated | Before telnet/OTA |
+
+### 14.4 Self-Diagnostics
+
+#### 14.4.1 Console Diagnostic Commands
+
+Each node provides console commands for self-diagnostics:
+
+**Master Node:**
+```
+status      - Full system status including heading, state, faults
+imu         - IMU sensor readings and calibration status
+heading     - Current heading with raw/filtered values
+pid         - PID controller state and outputs
+espnow      - ESP-NOW communication statistics
+```
+
+**Rudder Node:**
+```
+status      - Full system status including angle, motor, faults
+encoder     - AS5600 encoder readings and multi-turn position
+motor       - Motor status, PWM, current
+cal         - Calibration status and limits
+espnow      - ESP-NOW communication statistics
+```
+
+**UI Node:**
+```
+status      - Full system status showing all node states
+nodes       - Node connectivity and heartbeat ages
+buttons     - Button GPIO states and press detection
+display     - e-Paper display status
+espnow      - ESP-NOW communication statistics
+```
+
+#### 14.4.2 Runtime Monitoring
+
+Each node continuously monitors:
+- **Memory**: Free heap tracked, warning at low threshold
+- **Task stacks**: High-water marks monitored
+- **Communication**: TX/RX counters, error rates
+- **Timing**: Loop execution times, deadline misses
+
+### 14.5 Button Simulation for Testing
+
+The UI node provides a mechanism to simulate button presses via the console, enabling automated testing without physical button access.
+
+#### 14.5.1 Button Simulation Command
+
+```
+btn list      - Show button ID to function mapping
+btn <N>       - Simulate short press of button N (0-5)
+btn <N> long  - Simulate long press of button N
+```
+
+#### 14.5.2 Button ID Mapping
+
+| ID | Name | Action |
+|----|------|--------|
+| 0 | DEC10 | Decrease target heading by 10° |
+| 1 | DEC1 | Decrease target heading by 1° |
+| 2 | ENGAGE | Toggle ENGAGE/DISENGAGE |
+| 3 | MODE | Cycle display page |
+| 4 | INC1 | Increase target heading by 1° |
+| 5 | INC10 | Increase target heading by 10° |
+
+#### 14.5.3 Automated Test Sequence Example
+
+```bash
+# Test engage/disengage cycle
+echo "status" | nc 192.168.1.186 2323    # Check initial state (IDLE)
+echo "btn 2" | nc 192.168.1.186 2323     # Press ENGAGE
+sleep 2
+echo "status" | nc 192.168.1.186 2323    # Verify state (ENGAGED)
+echo "btn 5" | nc 192.168.1.186 2323     # Press +10 degrees
+sleep 1
+echo "status" | nc 192.168.1.186 2323    # Verify target changed
+echo "btn 2" | nc 192.168.1.186 2323     # Press DISENGAGE
+echo "status" | nc 192.168.1.186 2323    # Verify state (IDLE)
+```
+
+### 14.6 Acceptance Criteria for Self-Validation
+
+| # | Criterion | Test Method |
+|---|-----------|-------------|
+| SV-1 | Heartbeat loss detected within 500ms | Disconnect node, verify FAULTED |
+| SV-2 | Button simulation matches physical buttons | Compare via telnet and physical |
+| SV-3 | All diagnostic commands return valid data | Execute each command |
+| SV-4 | State validation prevents invalid ENGAGE | Attempt ENGAGE with invalid heading |
+| SV-5 | Timeout detection stops motor safely | Disconnect Master while ENGAGED |
 
 ------
 
