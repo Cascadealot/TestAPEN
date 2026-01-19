@@ -89,7 +89,7 @@ esptool.py --port /dev/ttyUSB0 read_mac
 
 | File | Purpose |
 |------|---------|
-| `docs/TestAP2.FSD.v1.0.0.md` | **Authoritative specification** - Single source of truth |
+| `docs/TestAPEN.FSD.v1.0.0.md` | **Authoritative specification** - Single source of truth |
 | `agent/feature-list.json` | Feature tracking for LRA workflow |
 | `agent/coding-prompt.md` | Development session instructions |
 | `docs/claude-progress.txt` | Cross-session work log |
@@ -225,5 +225,32 @@ If ESP-NOW proves unsuitable for production:
 
 ## References
 
-- **FSD**: `docs/TestAP2.FSD.v1.0.0.md` (always authoritative)
+- **FSD**: `docs/TestAPEN.FSD.v1.0.0.md` (always authoritative)
 - **TestAP2**: Original CAN-based project at `/home/cas/TestAP2/`
+
+---
+
+## CRITICAL USER DIRECTIVES (MUST FOLLOW)
+
+### STOP MEANS STOP - IMMEDIATELY
+When the user types "stop", "STOP", or any variation:
+- STOP ALL ACTIONS IMMEDIATELY
+- Do NOT finish current thought
+- Do NOT complete current tool call
+- Do NOT explain anything
+- Just respond "Stopped." and WAIT
+
+This has been emphasized THREE TIMES. No exceptions.
+
+### NO FLASHING WITHOUT PERMISSION
+NEVER flash firmware (USB or OTA) without the user's EXPRESS PERMISSION.
+- Always ask first: "Ready to flash. Proceed?"
+- Wait for explicit "yes" or confirmation
+- Do NOT assume permission
+
+### USB SERIAL FREEZES TERMINAL
+Do NOT attempt to read data from ESP32 via USB serial (cat, monitor, etc.).
+The terminal session freezes and cannot capture data.
+Use OTA/HTTP methods instead.
+
+---

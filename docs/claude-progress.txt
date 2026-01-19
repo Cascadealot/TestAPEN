@@ -5,7 +5,7 @@
 PROJECT: TestAPEN - Tri-node marine autopilot with ESP-NOW (ESP-IDF)
 REPO: https://github.com/Cascadealot/TestAPEN
 BRANCH: feature/remove-safety-for-testing
-FSD: docs/TestAP2.FSD.v1.0.0.md (inherited from TestAP2)
+FSD: docs/TestAPEN.FSD.v1.0.0.md (inherited from TestAP2)
 FW VERSION: 1.1.0-espnow (UI Node with button simulation)
 
 STATUS: UI Node fully functional - telnet, display, button simulation working

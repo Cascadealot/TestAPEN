@@ -1,8 +1,8 @@
-# TestAP2 Simple Autopilot
+# TestAPEN Simple Autopilot
 
 ## Gold Standard Functional Specification Document (FSD)
 
-**Project:** TestAP2 Autopilot
+**Project:** TestAPEN Autopilot (ESP-NOW variant)
 **Document Type:** Functional Specification (Single Source of Truth)
 **FSD Version:** v1.0.0
 **Status:** Authoritative
@@ -15,6 +15,7 @@
 | Version | Date       | Author      | Description                    |
 | ------- | ---------- | ----------- | ------------------------------ |
 | v1.0.0  | 2026-01-13 | Claude Code | Initial release from v3.5 spec |
+| v1.0.1  | 2026-01-19 | Claude Code | Renamed to TestAPEN, added Self Validating Agents (Sec 14) |
 
 ------
 

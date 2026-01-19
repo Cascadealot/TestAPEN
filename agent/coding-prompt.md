@@ -54,4 +54,4 @@ Before stopping:
 | `main/master_node.c` | Master node implementation |
 | `main/rudder_node.c` | Rudder node implementation |
 | `components/*/include/*.h` | Component headers |
-| `docs/TestAP2.FSD.v1.0.0.md` | Authoritative specification |
+| `docs/TestAPEN.FSD.v1.0.0.md` | Authoritative specification |
