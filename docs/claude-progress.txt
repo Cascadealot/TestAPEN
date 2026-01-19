@@ -2,15 +2,67 @@
 #                          QUICK RECOVERY SUMMARY                              #
 ################################################################################
 
-PROJECT: TestAP2 - Tri-node marine autopilot (ESP-IDF)
-REPO: https://github.com/Cascadealot/TestAP2
-BRANCH: feature/UI-node-implementation
-FSD: docs/TestAP2.FSD.v1.0.0.md
-FW VERSION: 1.1.0
+PROJECT: TestAPEN - Tri-node marine autopilot with ESP-NOW (ESP-IDF)
+REPO: https://github.com/Cascadealot/TestAPEN
+BRANCH: feature/remove-safety-for-testing
+FSD: docs/TestAP2.FSD.v1.0.0.md (inherited from TestAP2)
+FW VERSION: TEST-RECT-1.0 (UI Node e-Paper test)
 
-STATUS: 30/32 features complete + UiNode (Phase 1)
+STATUS: e-Paper display WORKING - text and graphics render correctly
 
-LAST COMPLETED (Session 16 - UiNode Implementation Phase 1):
+================================================================================
+SESSION 17 - 2026-01-19 (e-Paper Display Fix)
+================================================================================
+
+CRITICAL FIX: e-Paper Display Rendering
+
+The SSD1680 2.9" e-Paper display (296x128) was showing corrupted/diagonal text.
+After systematic debugging, two issues were identified and fixed:
+
+ISSUE 1: Coordinate Transformation
+- Display is mounted in landscape but native mode is portrait (128x296)
+- Fixed using Adafruit_GFX rotation 1 formula:
+  * native_x = 127 - y  (NATIVE_WIDTH - 1 - y)
+  * native_y = x
+- This matches GxEPD2's setRotation(1) behavior
+
+ISSUE 2: Font Bit Order
+- Font data has bit 0 as the leftmost pixel, not bit 7
+- Changed extraction from: (glyph[row] >> (7 - col)) & 0x01
+- Changed extraction to:   (glyph[row] >> col) & 0x01
+- This fixed the horizontal mirroring of characters
+
+FILES MODIFIED:
+- components/epaper/epaper.c
+  * epaper_set_pixel() - Adafruit rotation 1 coordinate transformation
+  * epaper_draw_char() - Corrected bit extraction order
+  * Added epaper_test_pattern() for diagnostics
+
+DEBUGGING METHODOLOGY:
+1. Created minimal test sketch (OTA + rectangle only)
+2. Used USB camera to capture display output
+3. Tested rectangles first (simpler than text)
+4. Confirmed rectangles render correctly
+5. Added text, identified mirroring issue
+6. Fixed font bit order
+
+HARDWARE CONFIRMED:
+- Display: 2.9" e-Paper, SSD1680 controller v2.1
+- Resolution: 296x128 (landscape) / 128x296 (native portrait)
+- Interface: SPI (GPIOs configured in Kconfig)
+
+GIT:
+- Commit: 9e5571b "Fix e-Paper display rendering with correct rotation and font"
+- Pushed to: origin/feature/remove-safety-for-testing
+
+NEXT STEPS:
+- Restore full ui_node.c functionality (currently minimal test version)
+- Test button input
+- Integrate ESP-NOW heartbeat display
+
+================================================================================
+
+PREVIOUS (Session 16 - UiNode Implementation Phase 1):
 - Created UI Node as third node type for TestAP2
 - Button input with debouncing and long-press detection (6 buttons)
 - CAN heartbeat receive from Master and Rudder nodes
