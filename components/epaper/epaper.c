@@ -63,6 +63,35 @@ static const char *TAG = "EPAPER";
 static spi_device_handle_t s_spi = NULL;
 static uint8_t s_framebuffer[EPAPER_FB_SIZE];
 static bool s_initialized = false;
+static bool s_partial_mode = false;
+static int s_partial_refresh_count = 0;
+
+// Dirty region tracking (in landscape coordinates)
+static int s_dirty_x1 = 0, s_dirty_y1 = 0;
+static int s_dirty_x2 = -1, s_dirty_y2 = -1;  // -1 means no dirty region
+
+// Partial refresh LUT (153 bytes) - from GxEPD2 for fast partial updates
+// This LUT provides ~0.4s refresh with minimal ghosting
+static const uint8_t lut_partial[153] = {
+    0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x40, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x00, 0x00, 0x00,
+};
 
 // Simple 8x8 font (ASCII 32-127)
 static const uint8_t font_8x8[][8] = {
@@ -438,6 +467,193 @@ void epaper_update(void) {
     wait_busy();
 
     ESP_LOGI(TAG, "Display update complete");
+
+    // Reset to full refresh mode and clear dirty region
+    s_partial_mode = false;
+    s_partial_refresh_count = 0;
+    s_dirty_x1 = 0;
+    s_dirty_y1 = 0;
+    s_dirty_x2 = -1;
+    s_dirty_y2 = -1;
+}
+
+/**
+ * @brief Initialize partial refresh mode with custom LUT
+ */
+static void init_partial_mode(void) {
+    if (s_partial_mode) return;
+
+    ESP_LOGI(TAG, "Initializing partial refresh mode");
+
+    // Write partial refresh LUT
+    send_command(CMD_WRITE_LUT);
+    send_data_buffer(lut_partial, sizeof(lut_partial));
+    wait_busy();
+
+    s_partial_mode = true;
+}
+
+/**
+ * @brief Update only a partial region of the display (fast, no flash)
+ *
+ * Coordinates are in landscape mode (0-295 x, 0-127 y)
+ * The region will be expanded to byte boundaries.
+ *
+ * @param x Starting X coordinate
+ * @param y Starting Y coordinate
+ * @param w Width of region
+ * @param h Height of region
+ */
+void epaper_update_partial(int x, int y, int w, int h) {
+    if (!s_initialized) {
+        ESP_LOGW(TAG, "epaper_update_partial: Not initialized!");
+        return;
+    }
+
+    // Clamp to display bounds
+    if (x < 0) { w += x; x = 0; }
+    if (y < 0) { h += y; y = 0; }
+    if (x + w > EPAPER_WIDTH) w = EPAPER_WIDTH - x;
+    if (y + h > EPAPER_HEIGHT) h = EPAPER_HEIGHT - y;
+
+    if (w <= 0 || h <= 0) {
+        ESP_LOGW(TAG, "Invalid partial region");
+        return;
+    }
+
+    // After 5 partial refreshes, do a full refresh to clear ghosting
+    if (s_partial_refresh_count >= 5) {
+        ESP_LOGI(TAG, "Periodic full refresh to clear ghosting");
+        epaper_update();
+        return;
+    }
+
+    // Initialize partial mode if needed
+    init_partial_mode();
+
+    // Transform landscape coordinates to native portrait coordinates
+    // Landscape (x,y) -> Native (127-y, x)
+    // Region in landscape: x to x+w, y to y+h
+    // Region in native:
+    //   native_x: (127 - (y+h-1)) to (127 - y) = (128-h-y) to (127-y)
+    //   native_y: x to (x+w-1)
+
+    int native_x_start = (NATIVE_WIDTH - 1) - (y + h - 1);  // 128 - y - h
+    int native_x_end = (NATIVE_WIDTH - 1) - y;              // 127 - y
+    int native_y_start = x;
+    int native_y_end = x + w - 1;
+
+    // Align native_x to byte boundaries (8 pixels per byte)
+    native_x_start = (native_x_start / 8) * 8;
+    native_x_end = ((native_x_end + 7) / 8) * 8 - 1;
+
+    int native_w_bytes = (native_x_end - native_x_start + 1) / 8;
+    int native_h = native_y_end - native_y_start + 1;
+
+    ESP_LOGI(TAG, "Partial update: landscape(%d,%d,%d,%d) -> native(%d-%d, %d-%d)",
+             x, y, w, h, native_x_start, native_x_end, native_y_start, native_y_end);
+
+    // Set RAM X address range (in bytes)
+    send_command(CMD_SET_RAM_X);
+    send_data(native_x_start / 8);
+    send_data(native_x_end / 8);
+
+    // Set RAM Y address range
+    send_command(CMD_SET_RAM_Y);
+    send_data(native_y_start & 0xFF);
+    send_data((native_y_start >> 8) & 0xFF);
+    send_data(native_y_end & 0xFF);
+    send_data((native_y_end >> 8) & 0xFF);
+
+    // Set RAM counters to start position
+    send_command(CMD_SET_RAM_X_COUNTER);
+    send_data(native_x_start / 8);
+
+    send_command(CMD_SET_RAM_Y_COUNTER);
+    send_data(native_y_start & 0xFF);
+    send_data((native_y_start >> 8) & 0xFF);
+
+    // Write only the partial region data
+    send_command(CMD_WRITE_RAM_BW);
+
+    for (int row = native_y_start; row <= native_y_end; row++) {
+        for (int col_byte = native_x_start / 8; col_byte <= native_x_end / 8; col_byte++) {
+            int fb_idx = col_byte + row * (NATIVE_WIDTH / 8);
+            send_data(s_framebuffer[fb_idx]);
+        }
+    }
+
+    // Partial display update sequence
+    send_command(CMD_DISPLAY_UPDATE_2);
+    send_data(0xCF);  // Partial update (not 0xF7 which is full)
+
+    send_command(CMD_MASTER_ACTIVATE);
+    wait_busy();
+
+    s_partial_refresh_count++;
+    ESP_LOGI(TAG, "Partial update complete (count=%d)", s_partial_refresh_count);
+}
+
+/**
+ * @brief Update only the dirty region of the display
+ *
+ * Uses the tracked dirty region from set_pixel calls.
+ * Falls back to full update if no dirty region or region is too large.
+ */
+void epaper_update_dirty(void) {
+    if (!s_initialized) {
+        ESP_LOGW(TAG, "epaper_update_dirty: Not initialized!");
+        return;
+    }
+
+    // No dirty region - nothing to update
+    if (s_dirty_x2 < 0) {
+        ESP_LOGI(TAG, "No dirty region to update");
+        return;
+    }
+
+    int w = s_dirty_x2 - s_dirty_x1 + 1;
+    int h = s_dirty_y2 - s_dirty_y1 + 1;
+    int area = w * h;
+    int total_area = EPAPER_WIDTH * EPAPER_HEIGHT;
+
+    // If dirty region is more than 50% of display, do full refresh
+    if (area > total_area / 2) {
+        ESP_LOGI(TAG, "Dirty region >50%% (%d%%), using full refresh",
+                 (area * 100) / total_area);
+        epaper_update();
+        return;
+    }
+
+    ESP_LOGI(TAG, "Dirty region: (%d,%d)-(%d,%d) = %d%% of display",
+             s_dirty_x1, s_dirty_y1, s_dirty_x2, s_dirty_y2,
+             (area * 100) / total_area);
+
+    epaper_update_partial(s_dirty_x1, s_dirty_y1, w, h);
+
+    // Clear dirty region
+    s_dirty_x1 = 0;
+    s_dirty_y1 = 0;
+    s_dirty_x2 = -1;
+    s_dirty_y2 = -1;
+}
+
+/**
+ * @brief Reset partial refresh mode (forces next update to be full refresh)
+ */
+void epaper_reset_partial(void) {
+    s_partial_mode = false;
+    s_partial_refresh_count = 0;
+}
+
+/**
+ * @brief Mark the entire display as dirty
+ */
+void epaper_mark_dirty(void) {
+    s_dirty_x1 = 0;
+    s_dirty_y1 = 0;
+    s_dirty_x2 = EPAPER_WIDTH - 1;
+    s_dirty_y2 = EPAPER_HEIGHT - 1;
 }
 
 void epaper_set_pixel(int x, int y, bool black) {
@@ -470,6 +686,19 @@ void epaper_set_pixel(int x, int y, bool black) {
         s_framebuffer[byte_idx] &= ~(1 << bit_idx);  // 0 = black
     } else {
         s_framebuffer[byte_idx] |= (1 << bit_idx);   // 1 = white
+    }
+
+    // Track dirty region
+    if (s_dirty_x2 < 0) {
+        // First pixel - initialize dirty region
+        s_dirty_x1 = s_dirty_x2 = x;
+        s_dirty_y1 = s_dirty_y2 = y;
+    } else {
+        // Expand dirty region to include this pixel
+        if (x < s_dirty_x1) s_dirty_x1 = x;
+        if (x > s_dirty_x2) s_dirty_x2 = x;
+        if (y < s_dirty_y1) s_dirty_y1 = y;
+        if (y > s_dirty_y2) s_dirty_y2 = y;
     }
 }
 

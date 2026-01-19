@@ -38,9 +38,39 @@ void epaper_clear(void);
 void epaper_clear_black(void);
 
 /**
- * @brief Update display with framebuffer contents
+ * @brief Update display with framebuffer contents (full refresh)
+ * Full refresh takes ~3s but eliminates ghosting
  */
 void epaper_update(void);
+
+/**
+ * @brief Update only a partial region of the display (fast refresh)
+ * Partial refresh takes ~0.4s but may have minor ghosting
+ * After 5 partial refreshes, automatically does full refresh
+ *
+ * @param x Starting X coordinate (0-295)
+ * @param y Starting Y coordinate (0-127)
+ * @param w Width of region
+ * @param h Height of region
+ */
+void epaper_update_partial(int x, int y, int w, int h);
+
+/**
+ * @brief Update only the dirty region of the display
+ * Uses tracked dirty region from set_pixel calls
+ * Falls back to full refresh if region >50% of display
+ */
+void epaper_update_dirty(void);
+
+/**
+ * @brief Reset partial refresh mode (forces next update to be full)
+ */
+void epaper_reset_partial(void);
+
+/**
+ * @brief Mark the entire display as dirty
+ */
+void epaper_mark_dirty(void);
 
 /**
  * @brief Set a pixel in the framebuffer

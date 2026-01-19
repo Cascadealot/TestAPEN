@@ -481,7 +481,9 @@ static void display_update(void) {
             break;
     }
 
-    epaper_update();
+    // Use dirty region tracking for partial refresh
+    // Falls back to full refresh if dirty region is large
+    epaper_update_dirty();
     g_display_needs_update = false;
     ESP_LOGI(TAG, "Display update complete");
 }
