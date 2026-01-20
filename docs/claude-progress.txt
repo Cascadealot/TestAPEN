@@ -5,10 +5,22 @@
 PROJECT: TestAPEN - Tri-node marine autopilot with ESP-NOW (ESP-IDF)
 REPO: https://github.com/Cascadealot/TestAPEN
 BRANCH: feature/remove-safety-for-testing
-FSD: docs/TestAPEN.FSD.v1.0.0.md (inherited from TestAP2)
-FW VERSION: 1.1.0-espnow (UI Node with button simulation)
+FSD: docs/TestAPEN.FSD.v1.1.0.md (updated 2026-01-20)
+FW VERSION: 1.1.0-espnow
 
-STATUS: ESP-IDF e-paper driver working with partial refresh support
+STATUS: FULLY OPERATIONAL - All 45 tests passing, ready for boat testing
+
+QUICK RESUME:
+- All 3 nodes working: Master (118), Rudder (157), UI (186)
+- ESP-NOW communication verified
+- E-paper display with partial refresh working
+- FSD updated to v1.1.0 reflecting actual implementation
+- Test plan created: docs/TestAPEN-TestPlan.md
+
+NEXT STEPS WHEN RESUMING:
+1. Boat testing with all three nodes
+2. GNSS integration (driver exists, not integrated)
+3. Consider merging feature branch to master
 
 ================================================================================
 SESSION 21 - 2026-01-20 (Full System Test & Verification)
