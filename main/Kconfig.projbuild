@@ -120,6 +120,15 @@ menu "TestAPEN Configuration"
     menu "UI Node Configuration"
         depends on TESTAP2_NODE_UI
 
+        config TESTAP2_EPAPER_TEST
+            bool "e-Paper Partial Refresh Test Mode"
+            default n
+            help
+                Enable minimal test mode for e-Paper partial refresh.
+                Displays a compass heading that increments every second.
+                Uses 159-byte LUT and 0x0F partial update command.
+                Disables normal UI node functionality.
+
         menu "Button GPIO Pins"
             config TESTAP2_BTN_DEC10_GPIO
                 int "Button -10 deg GPIO"

@@ -1,12 +1,23 @@
 # TestAPEN Main Component CMakeLists.txt
 # Fork of TestAP2 using ESP-NOW instead of CAN bus
 
-idf_component_register(
-    SRCS
+# Check if e-Paper test mode is enabled
+if(CONFIG_TESTAP2_EPAPER_TEST)
+    # Minimal test mode - only e-Paper partial refresh test
+    set(MAIN_SRCS "epaper_test.c")
+else()
+    # Normal mode - full node implementation
+    set(MAIN_SRCS
         "main.c"
         "master_node.c"
         "rudder_node.c"
         "ui_node.c"
+    )
+endif()
+
+idf_component_register(
+    SRCS
+        ${MAIN_SRCS}
     INCLUDE_DIRS
         "."
     REQUIRES
@@ -27,4 +38,5 @@ idf_component_register(
         esp_wifi
         esp_event
         bt
+        console
 )

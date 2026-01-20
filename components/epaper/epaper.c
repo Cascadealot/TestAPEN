@@ -70,27 +70,37 @@ static int s_partial_refresh_count = 0;
 static int s_dirty_x1 = 0, s_dirty_y1 = 0;
 static int s_dirty_x2 = -1, s_dirty_y2 = -1;  // -1 means no dirty region
 
-// Partial refresh LUT (153 bytes) - from GxEPD2 for fast partial updates
-// This LUT provides ~0.4s refresh with minimal ghosting
-static const uint8_t lut_partial[153] = {
+// Partial refresh LUT (159 bytes) - from ESPHome PR #5481 for SSD1680
+// Correct size is 159 bytes for SSD1680 controller
+// This LUT provides fast partial refresh with minimal ghosting
+static const uint8_t lut_partial[159] = {
+    // LUT0: LUTC (12 bytes)
     0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // LUT1: LUTWW (12 bytes)
     0x80, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // LUT2: LUTKW/LUTR (12 bytes)
     0x40, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // LUT3: LUTWK/LUTW (12 bytes)
     0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // LUT4: LUTKK/LUTB (12 bytes)
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x0A, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // Timing: 12 groups x 7 bytes = 84 bytes
+    0x14, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP0
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP1
+    0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP2
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP3
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP4
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP5
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP6
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP7
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP8
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP9
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP10
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  // TP11
+    // Frame rate settings (9 bytes)
     0x22, 0x22, 0x22, 0x22, 0x22, 0x22, 0x00, 0x00, 0x00,
+    // XON settings (6 bytes) - required for 159 byte total
+    0x22, 0x17, 0x41, 0x00, 0x32, 0x36,
 };
 
 // Simple 8x8 font (ASCII 32-127)
@@ -296,8 +306,9 @@ static void init_display(void) {
     send_data(((NATIVE_HEIGHT - 1) >> 8) & 0xFF);  // 0x01 = 295 high byte
     send_data(0x00);  // Gate scanning sequence and direction
 
-    // Data entry mode - exact GxEPD2 settings:
-    // 0x03 = "x increase, y increase, normal mode"
+    // Data entry mode: 0x03 = AM=0 (Y first), Y inc, X inc
+    // Display fills column by column (all Y for X=0, then X=1, etc.)
+    // Framebuffer is organized to match this (column-major)
     send_command(CMD_DATA_ENTRY_MODE);
     send_data(0x03);
 
@@ -455,7 +466,8 @@ void epaper_update(void) {
     send_data(0x00);  // Y = 0 low
     send_data(0x00);  // Y = 0 high
 
-    // Write B/W RAM
+    // Write B/W RAM directly - data entry mode 0x07 expects row-major order
+    // which matches our framebuffer organization
     send_command(CMD_WRITE_RAM_BW);
     send_data_buffer(s_framebuffer, EPAPER_FB_SIZE);
 
@@ -479,17 +491,51 @@ void epaper_update(void) {
 
 /**
  * @brief Initialize partial refresh mode with custom LUT
+ *
+ * Based on ESPHome PR #5481 and Waveshare documentation:
+ * - Hardware reset recommended before partial mode
+ * - LUT must be 159 bytes for SSD1680
+ * - Use command 0x0F for partial refresh
  */
 static void init_partial_mode(void) {
     if (s_partial_mode) return;
 
-    ESP_LOGI(TAG, "Initializing partial refresh mode");
+    ESP_LOGI(TAG, "Initializing partial refresh mode (LUT size=%d)", (int)sizeof(lut_partial));
 
-    // Write partial refresh LUT
+    // Hardware reset before entering partial mode (recommended by Waveshare)
+    hw_reset();
+    wait_busy();
+
+    // Software reset
+    send_command(CMD_SW_RESET);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    wait_busy();
+
+    // Re-initialize display configuration after reset
+    // Driver output control
+    send_command(CMD_DRIVER_OUTPUT);
+    send_data((NATIVE_HEIGHT - 1) & 0xFF);
+    send_data(((NATIVE_HEIGHT - 1) >> 8) & 0xFF);
+    send_data(0x00);
+
+    // Data entry mode: 0x03 = AM=0 (Y first), Y inc, X inc
+    send_command(CMD_DATA_ENTRY_MODE);
+    send_data(0x03);
+
+    // Border waveform
+    send_command(CMD_BORDER_WAVEFORM);
+    send_data(0x05);
+
+    // Temperature sensor
+    send_command(CMD_TEMP_SENSOR);
+    send_data(0x80);
+
+    // Write partial refresh LUT (159 bytes)
     send_command(CMD_WRITE_LUT);
     send_data_buffer(lut_partial, sizeof(lut_partial));
     wait_busy();
 
+    ESP_LOGI(TAG, "Partial mode initialized successfully");
     s_partial_mode = true;
 }
 
@@ -584,8 +630,10 @@ void epaper_update_partial(int x, int y, int w, int h) {
     }
 
     // Partial display update sequence
+    // 0x0F = partial update using custom LUT (from ESPHome PR #5481)
+    // NOT 0xCF or 0xF7 which are for full refresh
     send_command(CMD_DISPLAY_UPDATE_2);
-    send_data(0xCF);  // Partial update (not 0xF7 which is full)
+    send_data(0x0F);
 
     send_command(CMD_MASTER_ACTIVATE);
     wait_busy();
@@ -657,44 +705,45 @@ void epaper_mark_dirty(void) {
 }
 
 void epaper_set_pixel(int x, int y, bool black) {
-    // LANDSCAPE MODE: 296 wide x 128 tall (matching GxEPD2 setRotation(1))
+    // LANDSCAPE MODE: 296 wide x 128 tall
     // User coordinates: x = 0-295 (horizontal), y = 0-127 (vertical)
     //
-    // Adafruit_GFX rotation 1 formula:
-    //   native_x = WIDTH - 1 - y   (WIDTH = native width = 128)
-    //   native_y = x
-    //
-    // Native portrait: 128 wide (X) x 296 tall (Y)
+    // Based on GxEPD2/ESPHome/Waveshare research:
+    // - Native display is 128x296 portrait
+    // - Framebuffer is ROW-MAJOR: byte_idx = (x/8) + y * 16
+    // - Bit order is MSB-first: bit_mask = 0x80 >> (x % 8)
+    // - For landscape rotation 1 (90° CW): swap then mirror X
+    //   rotated_x = NATIVE_WIDTH - 1 - y = 127 - y
+    //   rotated_y = x
 
     if (x < 0 || x >= EPAPER_WIDTH || y < 0 || y >= EPAPER_HEIGHT) {
         return;
     }
 
-    // Transform to native portrait coordinates (Adafruit rotation 1)
-    int native_x = (NATIVE_WIDTH - 1) - y;  // 127 - y
-    int native_y = x;
+    // Apply rotation 1 transformation (landscape)
+    int rotated_x = (NATIVE_WIDTH - 1) - y;  // 127 - y (0-127)
+    int rotated_y = x;                        // x (0-295)
 
-    // Framebuffer: row-major, 16 bytes per row, MSB = leftmost pixel
-    int byte_idx = (native_x / 8) + (native_y * 16);
-    int bit_idx = 7 - (native_x % 8);  // MSB = leftmost pixel
+    // Row-major framebuffer layout (standard for e-paper)
+    // 16 bytes per row, 296 rows
+    int byte_idx = (rotated_x / 8) + rotated_y * (NATIVE_WIDTH / 8);
+    int bit_mask = 0x80 >> (rotated_x % 8);  // MSB-first
 
     if (byte_idx < 0 || byte_idx >= EPAPER_FB_SIZE) {
         return;
     }
 
     if (black) {
-        s_framebuffer[byte_idx] &= ~(1 << bit_idx);  // 0 = black
+        s_framebuffer[byte_idx] &= ~bit_mask;  // 0 = black
     } else {
-        s_framebuffer[byte_idx] |= (1 << bit_idx);   // 1 = white
+        s_framebuffer[byte_idx] |= bit_mask;   // 1 = white
     }
 
     // Track dirty region
     if (s_dirty_x2 < 0) {
-        // First pixel - initialize dirty region
         s_dirty_x1 = s_dirty_x2 = x;
         s_dirty_y1 = s_dirty_y2 = y;
     } else {
-        // Expand dirty region to include this pixel
         if (x < s_dirty_x1) s_dirty_x1 = x;
         if (x > s_dirty_x2) s_dirty_x2 = x;
         if (y < s_dirty_y1) s_dirty_y1 = y;
@@ -709,19 +758,22 @@ void epaper_draw_char(int x, int y, char c, int size) {
 
     const uint8_t *glyph = font_8x8[c - 32];
 
-    // No rotation here - set_pixel handles coordinate transformation
-    // Font: row 0-7 = top to bottom, col 0-7 = left to right
-    // Bit 0 = leftmost pixel of each row (font is designed this way)
+    // This font uses LSB (bit 0) as leftmost pixel
+    // For column 0 (leftmost), we read bit 0
+    // For column 7 (rightmost), we read bit 7
+    // Only draw BLACK pixels - skip white since background is already white
     for (int row = 0; row < 8; row++) {
+        uint8_t row_data = glyph[row];
         for (int col = 0; col < 8; col++) {
-            bool black = (glyph[row] >> col) & 0x01;
-
-            if (size == 1) {
-                epaper_set_pixel(x + col, y + row, black);
-            } else {
-                for (int sy = 0; sy < size; sy++) {
-                    for (int sx = 0; sx < size; sx++) {
-                        epaper_set_pixel(x + col * size + sx, y + row * size + sy, black);
+            // Check if this pixel should be black (bit set = black)
+            if ((row_data >> col) & 0x01) {
+                if (size == 1) {
+                    epaper_set_pixel(x + col, y + row, true);
+                } else {
+                    for (int sy = 0; sy < size; sy++) {
+                        for (int sx = 0; sx < size; sx++) {
+                            epaper_set_pixel(x + col * size + sx, y + row * size + sy, true);
+                        }
                     }
                 }
             }
@@ -779,27 +831,44 @@ uint8_t* epaper_get_framebuffer(void) {
     return s_framebuffer;
 }
 
-// Simple rectangle test - no text, just a rectangle
+// Test with row-major framebuffer and proper rotation
 void epaper_test_pattern(void) {
-    ESP_LOGI(TAG, "=== SIMPLE RECTANGLE TEST ===");
+    ESP_LOGI(TAG, "=== ROW-MAJOR FRAMEBUFFER TEST ===");
+    ESP_LOGI(TAG, "Using GxEPD2-style rotation 1 (landscape)");
 
-    epaper_clear();  // All white
+    // Clear to white
+    epaper_clear();
 
-    // Draw a simple filled rectangle in the center
-    // Rectangle: 100 pixels wide, 50 pixels tall, centered
-    int rect_w = 100;
-    int rect_h = 50;
-    int rect_x = (EPAPER_WIDTH - rect_w) / 2;   // ~98
-    int rect_y = (EPAPER_HEIGHT - rect_h) / 2;  // ~39
+    // Draw border rectangle to show display bounds
+    for (int x = 0; x < EPAPER_WIDTH; x++) {
+        epaper_set_pixel(x, 0, true);              // Top edge
+        epaper_set_pixel(x, EPAPER_HEIGHT-1, true); // Bottom edge
+    }
+    for (int y = 0; y < EPAPER_HEIGHT; y++) {
+        epaper_set_pixel(0, y, true);              // Left edge
+        epaper_set_pixel(EPAPER_WIDTH-1, y, true); // Right edge
+    }
 
-    ESP_LOGI(TAG, "Drawing rectangle at (%d,%d) size %dx%d", rect_x, rect_y, rect_w, rect_h);
-
-    for (int y = rect_y; y < rect_y + rect_h; y++) {
-        for (int x = rect_x; x < rect_x + rect_w; x++) {
-            epaper_set_pixel(x, y, true);  // black
+    // Draw a filled square at top-left (30x30 at position 10,10)
+    for (int py = 10; py < 40; py++) {
+        for (int px = 10; px < 40; px++) {
+            epaper_set_pixel(px, py, true);
         }
     }
 
+    // Draw text using the font
+    epaper_draw_string(50, 15, "HELLO", 2);
+    epaper_draw_string(50, 50, "E-Paper Test", 1);
+    epaper_draw_string(50, 65, "296x128 Landscape", 1);
+
+    // Draw a smaller square at bottom-right
+    for (int py = 90; py < 115; py++) {
+        for (int px = 250; px < 285; px++) {
+            epaper_set_pixel(px, py, true);
+        }
+    }
+
+    ESP_LOGI(TAG, "Expected: border, top-left square, text, bottom-right square");
     epaper_update();
-    ESP_LOGI(TAG, "Rectangle test complete");
+    ESP_LOGI(TAG, "Test complete");
 }
