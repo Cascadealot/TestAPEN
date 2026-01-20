@@ -11,6 +11,59 @@ FW VERSION: 1.1.0-espnow (UI Node with button simulation)
 STATUS: ESP-IDF e-paper driver working with partial refresh support
 
 ================================================================================
+SESSION 21 - 2026-01-20 (Full System Test & Verification)
+================================================================================
+
+COMPREHENSIVE AUTOMATED TEST SUITE EXECUTED
+
+All 45 tests passed. TestAPEN system fully verified working:
+
+TEST RESULTS:
+| Category | Tests | Pass | Status |
+|----------|-------|------|--------|
+| Network Connectivity (1.x) | 6 | 6 | PASS |
+| ESP-NOW Communication (2.x) | 4 | 4 | PASS |
+| Master Node Functions (3.x) | 4 | 4 | PASS |
+| Rudder Node Functions (4.x) | 4 | 4 | PASS |
+| UI Node Display (5.x) | 6 | 6 | PASS |
+| Button Input (6.x) | 3 | 3 | PASS |
+| Autopilot Engagement (7.x) | 6 | 6 | PASS |
+| Heading Adjustment (8.x) | 5 | 5 | PASS |
+| State Machine (9.x) | 4 | 4 | PASS |
+| OTA Update Endpoints (10.x) | 3 | 3 | PASS |
+
+KEY VERIFICATION:
+1. All three nodes communicating via ESP-NOW (no wiring needed)
+2. UI display shows real-time heading, target, rudder angle
+3. Partial refresh working for value updates (~400ms vs 3s full)
+4. Button simulation via telnet enables automated testing
+5. Engage/disengage working from both Master console and UI buttons
+6. Heading adjustment ±1/±10 degrees via UI buttons verified
+7. OTA endpoints active on all nodes (HTTP 405 on GET = ready for POST)
+
+VISUAL VERIFICATION (USB Camera):
+- Page 0 (Autopilot): HDG, TGT, RUD values displayed correctly
+- Page 1 (Navigation): NAVIGATION title, GNSS data pending
+- Page 2 (System): Node connectivity, IP address, version info
+
+NODE STATUS (all operational):
+| Node | IP | ESP-NOW TX | ESP-NOW RX |
+|------|-----|------------|------------|
+| Master | 192.168.1.118 | 4401 | 12424 |
+| Rudder | 192.168.1.157 | 28481 | 4456 |
+| UI | 192.168.1.186 | receiver | receiver |
+
+TEST PLAN CREATED: docs/TestAPEN-TestPlan.md
+- 10 test categories with detailed test procedures
+- Automated test runner script included
+- Camera verification commands for visual tests
+- Troubleshooting section for common issues
+
+GIT:
+- Commit: b11a57d "Add e-paper partial refresh and test plan"
+- Pushed to: origin/feature/remove-safety-for-testing
+
+================================================================================
 SESSION 20 - 2026-01-20 (E-Paper Partial Refresh)
 ================================================================================
 
