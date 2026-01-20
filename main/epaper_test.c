@@ -25,7 +25,6 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_system.h"
-#include "esp_console.h"
 #include "nvs_flash.h"
 
 #include "network_manager.h"
@@ -36,7 +35,7 @@ static const char *TAG = "EPAPER_TEST";
 // Test state
 static float g_heading = 0.0f;
 static int g_update_count = 0;
-static bool g_use_partial = false;  // DISABLED - use full refresh only until stable
+static bool g_use_partial = true;  // Enable partial refresh testing
 
 // Heading display area (must be 8-pixel aligned for partial refresh)
 // Using large font size 2 (16x16 pixels per char)
@@ -109,20 +108,21 @@ static void do_full_update(void) {
 }
 
 /**
- * @brief Update display (using full refresh until partial is debugged)
+ * @brief Update display using partial refresh for heading area only
  */
 static void do_partial_update(void) {
-    ESP_LOGI(TAG, "--- Update #%d, heading=%.1f (full refresh mode) ---", g_update_count, g_heading);
+    g_update_count++;
+    ESP_LOGI(TAG, "--- Partial update #%d, heading=%.1f ---", g_update_count, g_heading);
 
     // Update heading in framebuffer
     draw_heading(g_heading);
 
-    // Use full refresh for now - partial refresh needs more debugging
+    // Use partial refresh for heading area
     uint32_t start = xTaskGetTickCount();
-    epaper_update();
+    epaper_update_partial(HEADING_X, HEADING_Y, HEADING_W, HEADING_H);
     uint32_t elapsed = (xTaskGetTickCount() - start) * portTICK_PERIOD_MS;
 
-    ESP_LOGI(TAG, "Full update took %lu ms", elapsed);
+    ESP_LOGI(TAG, "Partial update took %lu ms", elapsed);
 }
 
 /**
@@ -143,55 +143,95 @@ static void console_task(void *pvParameters) {
 }
 
 /**
- * @brief Console command handler for e-paper testing
+ * @brief Parse command into argc/argv
  */
-static int ep_cmd_handler(int argc, char **argv) {
-    if (argc < 2) {
-        printf("Usage: ep <command> [args]\n");
-        printf("Commands:\n");
-        printf("  clear     - Clear display to white\n");
-        printf("  black     - Fill display black\n");
-        printf("  pixel X Y - Draw pixel at (X,Y)\n");
-        printf("  hline Y   - Draw horizontal line at Y\n");
-        printf("  vline X   - Draw vertical line at X\n");
-        printf("  rect      - Draw hollow rectangle 10px from edges\n");
-        printf("  fill X Y W H - Fill rectangle\n");
-        printf("  text X Y MSG - Draw text\n");
-        printf("  update    - Refresh display\n");
-        printf("  test      - Run test pattern\n");
-        printf("  info      - Show display info\n");
-        return 0;
+static int parse_cmd(char *cmd_line, char **argv, int max_args) {
+    int argc = 0;
+    char *p = cmd_line;
+
+    while (*p && argc < max_args) {
+        // Skip whitespace
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p) break;
+
+        // Start of token
+        argv[argc++] = p;
+
+        // Find end of token
+        while (*p && *p != ' ' && *p != '\t') p++;
+        if (*p) *p++ = '\0';
     }
 
-    const char *cmd = argv[1];
+    return argc;
+}
+
+/**
+ * @brief Network manager command callback for e-paper testing
+ */
+static size_t ep_cmd_callback(const char *cmd_str, char *response, size_t response_size) {
+    // Make a copy since we'll modify it
+    char cmd_copy[256];
+    strncpy(cmd_copy, cmd_str, sizeof(cmd_copy) - 1);
+    cmd_copy[sizeof(cmd_copy) - 1] = '\0';
+
+    // Parse into argc/argv
+    char *argv[16];
+    int argc = parse_cmd(cmd_copy, argv, 16);
+
+    if (argc < 1) {
+        return snprintf(response, response_size, "Empty command\r\n");
+    }
+
+    const char *cmd = argv[0];
+
+    // Handle 'help' command
+    if (strcmp(cmd, "help") == 0) {
+        return snprintf(response, response_size,
+            "E-Paper Test Commands:\r\n"
+            "  clear       - Clear display to white\r\n"
+            "  black       - Fill display black\r\n"
+            "  pixel X Y   - Draw pixel at (X,Y)\r\n"
+            "  hline Y     - Draw horizontal line at Y\r\n"
+            "  vline X     - Draw vertical line at X\r\n"
+            "  rect        - Draw hollow rectangle 10px from edges\r\n"
+            "  fill X Y W H - Fill rectangle\r\n"
+            "  text X Y MSG - Draw text\r\n"
+            "  update      - Full refresh display\r\n"
+            "  partial X Y W H - Partial refresh region\r\n"
+            "  dirty       - Update only dirty region\r\n"
+            "  heading VAL - Set heading (triggers partial update)\r\n"
+            "  animate [N] - Animate heading N times (default 10)\r\n"
+            "  test        - Run test pattern\r\n"
+            "  info        - Show display info\r\n");
+    }
 
     if (strcmp(cmd, "clear") == 0) {
         epaper_clear();
-        printf("Display cleared to white\n");
+        return snprintf(response, response_size, "Display cleared to white\r\n");
     }
     else if (strcmp(cmd, "black") == 0) {
         epaper_clear_black();
-        printf("Display filled black\n");
+        return snprintf(response, response_size, "Display filled black\r\n");
     }
-    else if (strcmp(cmd, "pixel") == 0 && argc >= 4) {
-        int x = atoi(argv[2]);
-        int y = atoi(argv[3]);
-        epaper_set_pixel(x, y, true);
-        printf("Pixel set at (%d, %d)\n", x, y);
-    }
-    else if (strcmp(cmd, "hline") == 0 && argc >= 3) {
+    else if (strcmp(cmd, "pixel") == 0 && argc >= 3) {
+        int x = atoi(argv[1]);
         int y = atoi(argv[2]);
+        epaper_set_pixel(x, y, true);
+        return snprintf(response, response_size, "Pixel set at (%d, %d)\r\n", x, y);
+    }
+    else if (strcmp(cmd, "hline") == 0 && argc >= 2) {
+        int y = atoi(argv[1]);
         for (int x = 0; x < EPAPER_WIDTH; x++) {
             epaper_set_pixel(x, y, true);
         }
-        printf("Horizontal line at y=%d\n", y);
+        return snprintf(response, response_size, "Horizontal line at y=%d\r\n", y);
     }
-    else if (strcmp(cmd, "vline") == 0 && argc >= 3) {
-        int x = atoi(argv[2]);
+    else if (strcmp(cmd, "vline") == 0 && argc >= 2) {
+        int x = atoi(argv[1]);
         for (int y = 0; y < EPAPER_HEIGHT; y++) {
             epaper_set_pixel(x, y, true);
         }
-        printf("Vertical line at x=%d\n", x);
+        return snprintf(response, response_size, "Vertical line at x=%d\r\n", x);
     }
     else if (strcmp(cmd, "rect") == 0) {
         // Hollow rectangle 10px from edges
@@ -203,56 +243,99 @@ static int ep_cmd_handler(int argc, char **argv) {
             epaper_set_pixel(10, y, true);
             epaper_set_pixel(EPAPER_WIDTH - 11, y, true);
         }
-        printf("Rectangle drawn 10px from edges\n");
+        return snprintf(response, response_size, "Rectangle drawn 10px from edges\r\n");
     }
-    else if (strcmp(cmd, "fill") == 0 && argc >= 6) {
-        int x = atoi(argv[2]);
-        int y = atoi(argv[3]);
-        int w = atoi(argv[4]);
-        int h = atoi(argv[5]);
+    else if (strcmp(cmd, "fill") == 0 && argc >= 5) {
+        int x = atoi(argv[1]);
+        int y = atoi(argv[2]);
+        int w = atoi(argv[3]);
+        int h = atoi(argv[4]);
         for (int py = y; py < y + h; py++) {
             for (int px = x; px < x + w; px++) {
                 epaper_set_pixel(px, py, true);
             }
         }
-        printf("Filled rect at (%d,%d) size %dx%d\n", x, y, w, h);
+        return snprintf(response, response_size, "Filled rect at (%d,%d) size %dx%d\r\n", x, y, w, h);
     }
-    else if (strcmp(cmd, "text") == 0 && argc >= 5) {
-        int x = atoi(argv[2]);
-        int y = atoi(argv[3]);
-        epaper_draw_string(x, y, argv[4], 1);
-        printf("Text '%s' at (%d,%d)\n", argv[4], x, y);
+    else if (strcmp(cmd, "text") == 0 && argc >= 4) {
+        int x = atoi(argv[1]);
+        int y = atoi(argv[2]);
+        epaper_draw_string(x, y, argv[3], 1);
+        return snprintf(response, response_size, "Text '%s' at (%d,%d)\r\n", argv[3], x, y);
     }
     else if (strcmp(cmd, "update") == 0) {
-        printf("Updating display...\n");
         epaper_update();
-        printf("Display updated\n");
+        return snprintf(response, response_size, "Display updated (full refresh)\r\n");
     }
     else if (strcmp(cmd, "test") == 0) {
-        printf("Running test pattern...\n");
         epaper_test_pattern();
-        printf("Test complete\n");
+        return snprintf(response, response_size, "Test pattern complete\r\n");
+    }
+    else if (strcmp(cmd, "partial") == 0 && argc >= 5) {
+        int x = atoi(argv[1]);
+        int y = atoi(argv[2]);
+        int w = atoi(argv[3]);
+        int h = atoi(argv[4]);
+        uint32_t start = xTaskGetTickCount();
+        epaper_update_partial(x, y, w, h);
+        uint32_t elapsed = (xTaskGetTickCount() - start) * portTICK_PERIOD_MS;
+        return snprintf(response, response_size,
+            "Partial refresh (%d,%d) %dx%d took %lu ms\r\n", x, y, w, h, elapsed);
+    }
+    else if (strcmp(cmd, "dirty") == 0) {
+        uint32_t start = xTaskGetTickCount();
+        epaper_update_dirty();
+        uint32_t elapsed = (xTaskGetTickCount() - start) * portTICK_PERIOD_MS;
+        return snprintf(response, response_size, "Dirty update took %lu ms\r\n", elapsed);
+    }
+    else if (strcmp(cmd, "heading") == 0 && argc >= 2) {
+        g_heading = atof(argv[1]);
+        if (g_heading < 0) g_heading = 0;
+        if (g_heading >= 360) g_heading = fmod(g_heading, 360.0);
+        do_partial_update();
+        return snprintf(response, response_size, "Heading set to %.1f\r\n", g_heading);
+    }
+    else if (strcmp(cmd, "animate") == 0) {
+        int count = 10;
+        if (argc >= 2) count = atoi(argv[1]);
+        if (count < 1) count = 1;
+        if (count > 100) count = 100;
+
+        // Do a full refresh first to establish clean baseline
+        do_full_update();
+
+        for (int i = 0; i < count; i++) {
+            g_heading += 10.0f;
+            if (g_heading >= 360.0f) g_heading -= 360.0f;
+            ESP_LOGI(TAG, "[%d/%d] Heading: %.1f", i + 1, count, g_heading);
+            do_partial_update();
+            vTaskDelay(pdMS_TO_TICKS(500));
+        }
+        return snprintf(response, response_size,
+            "Animation complete. %d partial refreshes, final heading: %.1f\r\n", count, g_heading);
     }
     else if (strcmp(cmd, "info") == 0) {
-        printf("Display: %dx%d\n", EPAPER_WIDTH, EPAPER_HEIGHT);
-        printf("Framebuffer: %d bytes\n", EPAPER_FB_SIZE);
+        return snprintf(response, response_size,
+            "Display: %dx%d\r\n"
+            "Framebuffer: %d bytes\r\n"
+            "Heading region: (%d,%d) %dx%d\r\n"
+            "Current heading: %.1f\r\n"
+            "Update count: %d\r\n"
+            "Partial mode: %s\r\n",
+            EPAPER_WIDTH, EPAPER_HEIGHT,
+            EPAPER_FB_SIZE,
+            HEADING_X, HEADING_Y, HEADING_W, HEADING_H,
+            g_heading,
+            g_update_count,
+            g_use_partial ? "ENABLED" : "DISABLED");
     }
     else {
-        printf("Unknown command: %s\n", cmd);
+        return snprintf(response, response_size, "Unknown command: %s\r\n", cmd);
     }
 
     return 0;
 }
 
-static void register_ep_command(void) {
-    const esp_console_cmd_t cmd = {
-        .command = "ep",
-        .help = "E-paper display commands",
-        .hint = NULL,
-        .func = &ep_cmd_handler,
-    };
-    esp_console_cmd_register(&cmd);
-}
 
 /**
  * @brief Application entry point
@@ -299,9 +382,9 @@ void app_main(void) {
     ESP_LOGI(TAG, "  Width:  %d", EPAPER_WIDTH);
     ESP_LOGI(TAG, "  Height: %d", EPAPER_HEIGHT);
 
-    // Register console commands
-    register_ep_command();
-    ESP_LOGI(TAG, "Console commands registered - use 'ep help' for commands");
+    // Register command callback with network manager
+    network_manager_set_command_callback(ep_cmd_callback);
+    ESP_LOGI(TAG, "Console commands registered - use 'help' for commands");
 
     // Run initial test pattern
     ESP_LOGI(TAG, "Running initial test pattern...");

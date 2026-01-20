@@ -8,7 +8,63 @@ BRANCH: feature/remove-safety-for-testing
 FSD: docs/TestAPEN.FSD.v1.0.0.md (inherited from TestAP2)
 FW VERSION: 1.1.0-espnow (UI Node with button simulation)
 
-STATUS: TestAPEN2 created - Arduino-based UI Node with GxEPD2 for reliable e-paper
+STATUS: ESP-IDF e-paper driver working with partial refresh support
+
+================================================================================
+SESSION 20 - 2026-01-20 (E-Paper Partial Refresh)
+================================================================================
+
+PARTIAL REFRESH IMPLEMENTED FOR SSD1680 2.9" E-PAPER
+
+After fixing the row-major framebuffer issue in the previous session, partial
+refresh support has been verified working. The e-paper driver now supports:
+
+FEATURES:
+1. Partial refresh - Fast updates (~400ms vs ~3s for full refresh)
+2. Dirty region tracking - Only updates pixels that changed
+3. Ghosting prevention - Automatic full refresh after 5 partial updates
+4. Console test commands - heading, animate, partial, dirty
+
+CONSOLE COMMANDS ADDED (epaper_test.c):
+  heading VAL     - Set heading value with partial refresh
+  animate [N]     - Animate heading N times (default 10)
+  partial X Y W H - Partial refresh a specific region
+  dirty           - Update only the dirty region
+
+IMPLEMENTATION DETAILS:
+- 159-byte custom LUT for partial refresh (from ESPHome PR #5481)
+- Command 0x0F for partial update (not 0xCF/0xF7 for full)
+- init_partial_mode() configures LUT and controller
+- epaper_update_partial() updates specific region
+- s_partial_refresh_count tracks updates for ghosting prevention
+
+COORDINATE TRANSFORMATION:
+- Landscape (x,y) -> Native (127-y, x) for set_pixel
+- Partial regions transformed correctly using same formula
+- RAM window set commands aligned to 8-pixel boundaries
+
+TESTING RESULTS:
+  | Test | Command | Result |
+  |------|---------|--------|
+  | Single partial | heading 45 | Update in ~400ms |
+  | Multiple partial | animate 5 | 5 updates successful |
+  | Ghosting reset | animate 7 | Full refresh at update #6 |
+
+FILES MODIFIED:
+- main/epaper_test.c - New console commands, network callback
+- components/epaper/epaper.c - Row-major framebuffer (prev session)
+- /home/cas/TestAP2/CLAUDE.md - Added node network info table
+
+NODE NETWORK INFORMATION DOCUMENTED:
+| Node | IP Address | Telnet |
+|------|------------|--------|
+| Master | 192.168.1.118 | 2323 |
+| Rudder | 192.168.1.157 | 2323 |
+| UI | 192.168.1.186 | 2323 |
+
+GIT:
+- Branch: feature/UI-node-implementation
+- Ready for commit
 
 ================================================================================
 SESSION 19 - 2026-01-19 (TestAPEN2 Arduino UI Node)
