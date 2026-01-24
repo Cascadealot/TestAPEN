@@ -13,7 +13,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include <SD.h>
-#include "src/credentials.h"
+#include "src/conf/credentials.h"
 #include "src/bcOta/bcOta.h"
 #include "src/bcDebugNet/bcDebugNet.h"
 
