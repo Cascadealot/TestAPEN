@@ -8,7 +8,7 @@ BRANCH: master (feature branches merged)
 FSD: docs/TestAPEN.FSD.v1.1.0.md (updated 2026-01-20)
 FW VERSION: 1.1.0-espnow
 
-STATUS: OPERATIONAL - Resilient init implemented, ready for BLE/button testing
+STATUS: OPERATIONAL - Next: BLE debugging (Master node), then button testing
 
 QUICK RESUME:
 - All 3 nodes working: Master (118), Rudder (157), UI (186)
@@ -18,10 +18,16 @@ QUICK RESUME:
 - superclaude script fixed (was hardcoded to wrong project)
 
 NEXT STEPS WHEN RESUMING:
-1. BLE end-to-end testing (Master node)
+1. **BLE DEBUGGING** - Master node BLE has bugs (connects but issues)
 2. Button testing (UI node controls autopilot)
 3. Boat testing with all three nodes
 4. GNSS integration (driver exists, not integrated)
+
+CURRENT SESSION STATUS:
+- Rudder node: Resilient init implemented, WiFi working (192.168.1.157)
+- Master node: Operational (192.168.1.118)
+- UI node: TBD (192.168.1.186)
+- FSD Differences doc created: docs/FSD-Differences.v0.0.1.md
 
 ================================================================================
 SESSION 24 - 2026-01-24 (Rudder Node Resilient Initialization)
