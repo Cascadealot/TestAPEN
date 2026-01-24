@@ -230,6 +230,62 @@ If ESP-NOW proves unsuitable for production:
 
 ---
 
+## MANDATORY ANALYSIS WORKFLOW (MUST FOLLOW)
+
+Before making ANY code or configuration changes:
+
+### 1. ALWAYS CREATE A BRANCH FIRST
+```bash
+git checkout -b <descriptive-branch-name>
+```
+- Never make changes directly on master
+- Branch name should describe the fix/feature
+
+### 2. FULL ANALYSIS BEFORE ANY CHANGES
+If a node cannot be built, does not load, or a feature fails:
+
+**Q1: When was it working last?**
+- Check git log for relevant commits
+- Find the last known working state
+
+**Q2: Why is it not working now?**
+- Compare current config/code to working state
+- Identify specific changes that broke it
+- Use `git show <commit>:<file>` to examine historical state
+
+**Q3: How do proposed changes affect other nodes/code?**
+- Check if changes affect shared components
+- Verify impact on Master, Rudder, and UI nodes
+- Document any cross-component dependencies
+
+**Q4: Propose fix(es)**
+- Document the specific changes needed
+- Explain WHY each change is necessary
+- Reference the working state being restored
+
+**Q5: Source control ALL changes**
+- Commit with detailed message explaining:
+  - Root cause
+  - What was changed
+  - Why it was changed
+- Never leave changes uncommitted
+
+### 3. VERIFY NODE TYPE BEFORE BUILD
+```bash
+grep CONFIG_TESTAPEN_NODE sdkconfig
+```
+- ALWAYS verify node type matches target hardware
+- Show verification to user before proceeding
+
+### 4. ITERATIVE DEBUG WORKFLOW
+When troubleshooting:
+1. Make ONE change at a time
+2. Build and test after each change
+3. Document what worked and what didn't
+4. Commit working changes before trying next fix
+
+---
+
 ## CRITICAL USER DIRECTIVES (MUST FOLLOW)
 
 ### STOP MEANS STOP - IMMEDIATELY
