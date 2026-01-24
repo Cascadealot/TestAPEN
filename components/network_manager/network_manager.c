@@ -323,7 +323,7 @@ static void debug_server_task(void *pvParameters) {
 
                                 // Process command
                                 if (g_cmd_callback) {
-                                    char response[1024];
+                                    char response[2048];  // Increased from 1024 to fit help text (~1580 bytes)
                                     size_t resp_len = g_cmd_callback(g_cmd_buffer, response, sizeof(response));
                                     if (resp_len > 0) {
                                         send(g_debug_client, response, resp_len, 0);
