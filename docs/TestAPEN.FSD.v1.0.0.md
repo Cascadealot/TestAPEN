@@ -43,7 +43,7 @@
 
 ### 1.1 Purpose
 
-This document specifies the complete functional requirements for the TestAP2 marine autopilot system. It serves as the single source of truth for all implementation decisions.
+This document specifies the complete functional requirements for the TestAPEN marine autopilot system. It serves as the single source of truth for all implementation decisions.
 
 ### 1.2 Scope
 

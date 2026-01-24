@@ -2,7 +2,7 @@
  * @file master_node.c
  * @brief Master Node Implementation for TestAPEN
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 6.2
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 6.2
  * Modified for ESP-NOW communication instead of CAN bus.
  *
  * Master Node Tasks:
@@ -34,7 +34,7 @@
 #include "ble_manager.h"
 #include "gnss_driver.h"
 
-#ifdef CONFIG_TESTAP2_NODE_MASTER
+#ifdef CONFIG_TESTAPEN_NODE_MASTER
 
 static const char *TAG = "MASTER";
 
@@ -703,8 +703,8 @@ static void task_network(void *pvParameters) {
 static esp_err_t i2c_init(void) {
     i2c_config_t conf = {
         .mode = I2C_MODE_MASTER,
-        .sda_io_num = CONFIG_TESTAP2_I2C_SDA_GPIO,
-        .scl_io_num = CONFIG_TESTAP2_I2C_SCL_GPIO,
+        .sda_io_num = CONFIG_TESTAPEN_I2C_SDA_GPIO,
+        .scl_io_num = CONFIG_TESTAPEN_I2C_SCL_GPIO,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = 400000
@@ -760,7 +760,7 @@ void master_node_init(void) {
         return;
     }
     ESP_LOGI(TAG, "I2C initialized (SDA=%d, SCL=%d)",
-             CONFIG_TESTAP2_I2C_SDA_GPIO, CONFIG_TESTAP2_I2C_SCL_GPIO);
+             CONFIG_TESTAPEN_I2C_SDA_GPIO, CONFIG_TESTAPEN_I2C_SCL_GPIO);
 
     // Initialize display FIRST so we can show boot progress
     esp_err_t disp_err = ssd1306_init(I2C_NUM_0, g_i2c_mutex, 32);
@@ -796,10 +796,10 @@ void master_node_init(void) {
     // ========== PHASE 3: Network (takes longest) ==========
     boot_status(2, "WiFi...");
     esp_err_t net_err = network_manager_init(
-        CONFIG_TESTAP2_WIFI_SSID,
-        CONFIG_TESTAP2_WIFI_PASSWORD,
+        CONFIG_TESTAPEN_WIFI_SSID,
+        CONFIG_TESTAPEN_WIFI_PASSWORD,
         "testapen-master",
-        CONFIG_TESTAP2_DEBUG_PORT
+        CONFIG_TESTAPEN_DEBUG_PORT
     );
     if (net_err != ESP_OK) {
         boot_status(2, "WiFi: FAIL");
@@ -808,7 +808,7 @@ void master_node_init(void) {
         char ip[16];
         network_manager_get_ip(ip, sizeof(ip));
         boot_status(2, "WiFi: %s", ip);
-        ESP_LOGI(TAG, "Network ready - IP: %s, Debug port: %d", ip, CONFIG_TESTAP2_DEBUG_PORT);
+        ESP_LOGI(TAG, "Network ready - IP: %s, Debug port: %d", ip, CONFIG_TESTAPEN_DEBUG_PORT);
     }
 
     // Initialize console
@@ -906,4 +906,4 @@ void master_node_init(void) {
     ESP_LOGI(TAG, "========================================");
 }
 
-#endif // CONFIG_TESTAP2_NODE_MASTER
+#endif // CONFIG_TESTAPEN_NODE_MASTER

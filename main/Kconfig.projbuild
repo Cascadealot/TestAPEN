@@ -1,27 +1,27 @@
 menu "TestAPEN Configuration"
 
-    choice TESTAP2_NODE_TYPE
+    choice TESTAPEN_NODE_TYPE
         prompt "Node Type"
-        default TESTAP2_NODE_MASTER
+        default TESTAPEN_NODE_MASTER
         help
             Select which node type to build.
             Master Node: IMU, GNSS, Display, BLE, Autopilot control
             Rudder Node: Encoder, Motor driver, Servo control
             UI Node: e-Paper display, Button input, ESP-NOW listener
 
-        config TESTAP2_NODE_MASTER
+        config TESTAPEN_NODE_MASTER
             bool "Master Node"
             help
                 Build firmware for the Master Node.
                 Includes: IMU, GNSS, Display, BLE, Autopilot control.
 
-        config TESTAP2_NODE_RUDDER
+        config TESTAPEN_NODE_RUDDER
             bool "Rudder Node"
             help
                 Build firmware for the Rudder Node.
                 Includes: AS5600 encoder, Motor driver, Servo control.
 
-        config TESTAP2_NODE_UI
+        config TESTAPEN_NODE_UI
             bool "UI Node"
             help
                 Build firmware for the UI Node.
@@ -61,34 +61,34 @@ menu "TestAPEN Configuration"
                 If not connected to AP, channel 1 will be used.
     endmenu
 
-    config TESTAP2_I2C_SDA_GPIO
+    config TESTAPEN_I2C_SDA_GPIO
         int "I2C SDA GPIO"
         default 21
         help
             GPIO pin for I2C data.
 
-    config TESTAP2_I2C_SCL_GPIO
+    config TESTAPEN_I2C_SCL_GPIO
         int "I2C SCL GPIO"
         default 22
         help
             GPIO pin for I2C clock.
 
-    config TESTAP2_STATUS_LED_GPIO
+    config TESTAPEN_STATUS_LED_GPIO
         int "Status LED GPIO"
         default 2
         help
             GPIO pin for status LED.
 
     menu "Master Node Configuration"
-        depends on TESTAP2_NODE_MASTER
+        depends on TESTAPEN_NODE_MASTER
 
-        config TESTAP2_GNSS_RX_GPIO
+        config TESTAPEN_GNSS_RX_GPIO
             int "GNSS RX GPIO"
             default 16
             help
                 GPIO pin for GNSS UART receive.
 
-        config TESTAP2_GNSS_TX_GPIO
+        config TESTAPEN_GNSS_TX_GPIO
             int "GNSS TX GPIO"
             default 17
             help
@@ -96,21 +96,21 @@ menu "TestAPEN Configuration"
     endmenu
 
     menu "Rudder Node Configuration"
-        depends on TESTAP2_NODE_RUDDER
+        depends on TESTAPEN_NODE_RUDDER
 
-        config TESTAP2_MOTOR_PWM_GPIO
+        config TESTAPEN_MOTOR_PWM_GPIO
             int "Motor PWM GPIO"
-            default 25
+            default 26
             help
                 GPIO pin for motor PWM output.
 
-        config TESTAP2_MOTOR_DIR_GPIO
+        config TESTAPEN_MOTOR_DIR_GPIO
             int "Motor Direction GPIO"
-            default 26
+            default 25
             help
                 GPIO pin for motor direction control.
 
-        config TESTAP2_MOTOR_EN_GPIO
+        config TESTAPEN_MOTOR_EN_GPIO
             int "Motor Enable GPIO"
             default 27
             help
@@ -118,9 +118,9 @@ menu "TestAPEN Configuration"
     endmenu
 
     menu "UI Node Configuration"
-        depends on TESTAP2_NODE_UI
+        depends on TESTAPEN_NODE_UI
 
-        config TESTAP2_EPAPER_TEST
+        config TESTAPEN_EPAPER_TEST
             bool "e-Paper Partial Refresh Test Mode"
             default n
             help
@@ -130,37 +130,37 @@ menu "TestAPEN Configuration"
                 Disables normal UI node functionality.
 
         menu "Button GPIO Pins"
-            config TESTAP2_BTN_DEC10_GPIO
+            config TESTAPEN_BTN_DEC10_GPIO
                 int "Button -10 deg GPIO"
                 default 36
                 help
                     GPIO for -10 degree heading button.
 
-            config TESTAP2_BTN_DEC1_GPIO
+            config TESTAPEN_BTN_DEC1_GPIO
                 int "Button -1 deg GPIO"
                 default 39
                 help
                     GPIO for -1 degree heading button.
 
-            config TESTAP2_BTN_ENGAGE_GPIO
+            config TESTAPEN_BTN_ENGAGE_GPIO
                 int "Button Engage GPIO"
                 default 34
                 help
                     GPIO for engage/disengage button.
 
-            config TESTAP2_BTN_MODE_GPIO
+            config TESTAPEN_BTN_MODE_GPIO
                 int "Button Mode GPIO"
                 default 35
                 help
                     GPIO for mode/page button.
 
-            config TESTAP2_BTN_INC1_GPIO
+            config TESTAPEN_BTN_INC1_GPIO
                 int "Button +1 deg GPIO"
                 default 32
                 help
                     GPIO for +1 degree heading button.
 
-            config TESTAP2_BTN_INC10_GPIO
+            config TESTAPEN_BTN_INC10_GPIO
                 int "Button +10 deg GPIO"
                 default 33
                 help
@@ -168,37 +168,37 @@ menu "TestAPEN Configuration"
         endmenu
 
         menu "e-Paper Display GPIO Pins"
-            config TESTAP2_EPAPER_BUSY_GPIO
+            config TESTAPEN_EPAPER_BUSY_GPIO
                 int "e-Paper BUSY GPIO"
                 default 3
                 help
                     GPIO for e-Paper busy signal (input).
 
-            config TESTAP2_EPAPER_RST_GPIO
+            config TESTAPEN_EPAPER_RST_GPIO
                 int "e-Paper RST GPIO"
                 default 27
                 help
                     GPIO for e-Paper reset signal.
 
-            config TESTAP2_EPAPER_DC_GPIO
+            config TESTAPEN_EPAPER_DC_GPIO
                 int "e-Paper DC GPIO"
                 default 19
                 help
                     GPIO for e-Paper data/command select.
 
-            config TESTAP2_EPAPER_CS_GPIO
+            config TESTAPEN_EPAPER_CS_GPIO
                 int "e-Paper CS GPIO"
                 default 17
                 help
                     GPIO for e-Paper chip select.
 
-            config TESTAP2_EPAPER_CLK_GPIO
+            config TESTAPEN_EPAPER_CLK_GPIO
                 int "e-Paper CLK GPIO"
                 default 18
                 help
                     GPIO for e-Paper SPI clock.
 
-            config TESTAP2_EPAPER_DIN_GPIO
+            config TESTAPEN_EPAPER_DIN_GPIO
                 int "e-Paper DIN GPIO"
                 default 23
                 help
@@ -209,19 +209,19 @@ menu "TestAPEN Configuration"
     menu "Network Configuration"
         # Available for all nodes
 
-        config TESTAP2_WIFI_SSID
+        config TESTAPEN_WIFI_SSID
             string "WiFi SSID"
             default "YourNetwork"
             help
                 WiFi network name.
 
-        config TESTAP2_WIFI_PASSWORD
+        config TESTAPEN_WIFI_PASSWORD
             string "WiFi Password"
             default "YourPassword"
             help
                 WiFi network password.
 
-        config TESTAP2_DEBUG_PORT
+        config TESTAPEN_DEBUG_PORT
             int "Debug Console Port"
             default 2323
             help

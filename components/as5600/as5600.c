@@ -2,7 +2,7 @@
  * @file as5600.c
  * @brief AS5600 Magnetic Rotary Encoder Driver Implementation
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 4.2, 9.3
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 4.2, 9.3
  */
 
 #include "as5600.h"

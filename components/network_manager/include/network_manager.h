@@ -1,6 +1,6 @@
 /**
  * @file network_manager.h
- * @brief WiFi, OTA, and Debug Console for TestAP2
+ * @brief WiFi, OTA, and Debug Console for TestAPEN
  */
 
 #ifndef NETWORK_MANAGER_H

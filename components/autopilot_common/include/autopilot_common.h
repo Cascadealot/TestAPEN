@@ -1,8 +1,8 @@
 /**
  * @file autopilot_common.h
- * @brief Common definitions for TestAP2 Autopilot
+ * @brief Common definitions for TestAPEN Autopilot
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md
  */
 
 #ifndef AUTOPILOT_COMMON_H
@@ -19,8 +19,8 @@ extern "C" {
  * Version Information
  *============================================================================*/
 
-#define TESTAP2_FSD_VERSION     "1.0.0"
-#define TESTAP2_FW_VERSION      "1.1.0"
+#define TESTAPEN_FSD_VERSION     "1.0.0"
+#define TESTAPEN_FW_VERSION      "1.1.0"
 
 /*============================================================================
  * Node IDs (FSD Section 5.3)

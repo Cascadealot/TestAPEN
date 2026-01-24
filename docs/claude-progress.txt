@@ -4,23 +4,81 @@
 
 PROJECT: TestAPEN - Tri-node marine autopilot with ESP-NOW (ESP-IDF)
 REPO: https://github.com/Cascadealot/TestAPEN
-BRANCH: feature/remove-safety-for-testing
+BRANCH: master (feature branches merged)
 FSD: docs/TestAPEN.FSD.v1.1.0.md (updated 2026-01-20)
 FW VERSION: 1.1.0-espnow
 
-STATUS: FULLY OPERATIONAL - All 45 tests passing, ready for boat testing
+STATUS: FULLY OPERATIONAL - Codebase cleaned, ready for boat testing
 
 QUICK RESUME:
 - All 3 nodes working: Master (118), Rudder (157), UI (186)
 - ESP-NOW communication verified
-- E-paper display with partial refresh working
-- FSD updated to v1.1.0 reflecting actual implementation
-- Test plan created: docs/TestAPEN-TestPlan.md
+- CRITICAL: All TESTAP2 references renamed to TESTAPEN in source code
+- Motor pins updated: DIR=25, PWM=26
+- superclaude script fixed (was hardcoded to wrong project)
 
 NEXT STEPS WHEN RESUMING:
 1. Boat testing with all three nodes
 2. GNSS integration (driver exists, not integrated)
-3. Consider merging feature branch to master
+3. UI Node display verification (partial refresh changes pending test)
+
+================================================================================
+SESSION 22 - 2026-01-24 (Critical Cleanup: TESTAP2 → TESTAPEN Rename)
+================================================================================
+
+CRITICAL BUG FOUND AND FIXED:
+
+ROOT CAUSE OF 4+ DAYS OF ISSUES:
+- /home/cas/.local/bin/superclaude was HARDCODED to `cd ~/TestAP2`
+- This caused Claude Code to ALWAYS start in TestAP2 directory
+- Even when user launched from TestAPEN folder, context was wrong
+- Led to code mixing between projects, confusion, wasted time
+
+FIX APPLIED:
+- Rewrote superclaude to use current working directory
+- No longer hardcodes any project path
+
+CODEBASE CLEANUP - TESTAP2 → TESTAPEN RENAME:
+
+All source code references to TESTAP2 have been renamed to TESTAPEN:
+- CONFIG_TESTAP2_* → CONFIG_TESTAPEN_* (32 occurrences in Kconfig)
+- All .c and .h files updated (20+ files)
+- CMakeLists.txt project references updated
+- Documentation files updated
+
+Files modified:
+- main/Kconfig.projbuild - All CONFIG_ prefixes renamed
+- CMakeLists.txt - Project name updated
+- All component source files - FSD references updated
+- CLAUDE.md - Project instructions updated
+- docs/TestAPEN.FSD.v1.0.0.md - References updated
+- tests/TEST_SUITE.md - References updated
+
+HARDWARE CONFIGURATION CHANGES:
+
+Motor Driver Pin Swap (Rudder Node):
+- DIR GPIO: 26 → 25
+- PWM GPIO: 25 → 26
+- User rebuilt hardware, required pin reassignment
+
+BLE MANAGER FIX:
+
+Fixed BLE component to only compile for Master node:
+- components/ble_manager/CMakeLists.txt - Made conditional on CONFIG_TESTAPEN_NODE_MASTER
+- Other nodes (Rudder, UI) register empty component with include path only
+- Prevents build errors when BT is disabled
+
+UI NODE PARTIAL REFRESH CHANGES:
+
+Updated display_update() in ui_node.c:
+- Direct epaper_update_partial() calls for each region
+- State line now shows: <STATE> <MODE> Err:<ERROR>
+- MODE shows HDG or COG based on FLAG_COG_MODE
+- Region heights corrected for font sizes
+
+GIT:
+- All changes committed to feature/ui-node-esp-idf-partial-refresh
+- Ready to merge to master
 
 ================================================================================
 SESSION 21 - 2026-01-20 (Full System Test & Verification)

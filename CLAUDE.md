@@ -6,7 +6,7 @@ This file is automatically read at the start of each Claude Code session.
 
 ## Project Overview
 
-**TestAPEN** is a fork of TestAP2 that replaces CAN bus communication with ESP-NOW wireless protocol. This enables boat testing while CAN hardware issues are resolved separately.
+**TestAPEN** is a fork of TestAPEN that replaces CAN bus communication with ESP-NOW wireless protocol. This enables boat testing while CAN hardware issues are resolved separately.
 
 ### Architecture
 
@@ -20,7 +20,7 @@ Three specialized nodes communicating via ESP-NOW (WiFi frames):
 
 ### ESP-NOW vs CAN Comparison
 
-| Aspect | TestAP2 (CAN) | TestAPEN (ESP-NOW) |
+| Aspect | TestAPEN (CAN) | TestAPEN (ESP-NOW) |
 |--------|---------------|---------------------|
 | Transport | CAN bus 500kbps | ESP-NOW WiFi frames |
 | Latency | <10ms deterministic | 5-50ms variable |
@@ -217,7 +217,7 @@ Before ending any session:
 ## Rollback Path
 
 If ESP-NOW proves unsuitable for production:
-1. Fix CAN hardware issues in TestAP2
+1. Fix CAN hardware issues in TestAPEN
 2. Message structures are identical - easy to port back
 3. TestAPEN remains available for wireless testing
 
@@ -226,7 +226,7 @@ If ESP-NOW proves unsuitable for production:
 ## References
 
 - **FSD**: `docs/TestAPEN.FSD.v1.0.0.md` (always authoritative)
-- **TestAP2**: Original CAN-based project at `/home/cas/TestAP2/`
+- **TestAPEN**: Original CAN-based project at `/home/cas/TestAPEN/`
 
 ---
 

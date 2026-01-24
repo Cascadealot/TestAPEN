@@ -1,5 +1,5 @@
 # TestAPEN Autopilot - Top-level CMakeLists.txt
-# Fork of TestAP2 using ESP-NOW instead of CAN bus
+# Fork of TestAPEN using ESP-NOW instead of CAN bus
 
 cmake_minimum_required(VERSION 3.16)
 

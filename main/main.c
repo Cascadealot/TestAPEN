@@ -2,10 +2,10 @@
  * @file main.c
  * @brief TestAPEN Autopilot Main Entry Point
  *
- * Fork of TestAP2 using ESP-NOW instead of CAN bus.
+ * Fork of TestAPEN using ESP-NOW instead of CAN bus.
  * This file selects between Master, Rudder, and UI node based on Kconfig.
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md
  */
 
 #include <stdio.h>
@@ -28,8 +28,8 @@ void app_main(void)
 {
     ESP_LOGI(TAG, "=================================================");
     ESP_LOGI(TAG, "TestAPEN Autopilot (ESP-NOW)");
-    ESP_LOGI(TAG, "FSD Version: %s", TESTAP2_FSD_VERSION);
-    ESP_LOGI(TAG, "FW Version:  %s-espnow", TESTAP2_FW_VERSION);
+    ESP_LOGI(TAG, "FSD Version: %s", TESTAPEN_FSD_VERSION);
+    ESP_LOGI(TAG, "FW Version:  %s-espnow", TESTAPEN_FW_VERSION);
     ESP_LOGI(TAG, "=================================================");
 
     // Initialize NVS (required for WiFi, calibration storage)
@@ -45,13 +45,13 @@ void app_main(void)
     // Note: ESP-NOW is initialized in each node's init function after WiFi starts
 
     // Select node type based on Kconfig
-#if CONFIG_TESTAP2_NODE_MASTER
+#if CONFIG_TESTAPEN_NODE_MASTER
     ESP_LOGI(TAG, "Node Type: MASTER");
     master_node_init();
-#elif CONFIG_TESTAP2_NODE_RUDDER
+#elif CONFIG_TESTAPEN_NODE_RUDDER
     ESP_LOGI(TAG, "Node Type: RUDDER");
     rudder_node_init();
-#elif CONFIG_TESTAP2_NODE_UI
+#elif CONFIG_TESTAPEN_NODE_UI
     ESP_LOGI(TAG, "Node Type: UI");
     ui_node_init();
 #else

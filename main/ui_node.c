@@ -2,7 +2,7 @@
  * @file ui_node.c
  * @brief UI Node Implementation for TestAPEN
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 6.4 (TBD)
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 6.4 (TBD)
  * Modified for ESP-NOW communication instead of CAN bus.
  *
  * UI Node Tasks:
@@ -30,7 +30,7 @@
 #include "param_store.h"
 #include "epaper.h"
 
-#ifdef CONFIG_TESTAP2_NODE_UI
+#ifdef CONFIG_TESTAPEN_NODE_UI
 
 static const char *TAG = "UI";
 
@@ -158,12 +158,12 @@ static void process_button_action(button_id_t btn, bool long_press);
  */
 static void buttons_init(void) {
     const gpio_num_t button_gpios[BTN_COUNT] = {
-        CONFIG_TESTAP2_BTN_DEC10_GPIO,
-        CONFIG_TESTAP2_BTN_DEC1_GPIO,
-        CONFIG_TESTAP2_BTN_ENGAGE_GPIO,
-        CONFIG_TESTAP2_BTN_MODE_GPIO,
-        CONFIG_TESTAP2_BTN_INC1_GPIO,
-        CONFIG_TESTAP2_BTN_INC10_GPIO
+        CONFIG_TESTAPEN_BTN_DEC10_GPIO,
+        CONFIG_TESTAPEN_BTN_DEC1_GPIO,
+        CONFIG_TESTAPEN_BTN_ENGAGE_GPIO,
+        CONFIG_TESTAPEN_BTN_MODE_GPIO,
+        CONFIG_TESTAPEN_BTN_INC1_GPIO,
+        CONFIG_TESTAPEN_BTN_INC10_GPIO
     };
 
     for (int i = 0; i < BTN_COUNT; i++) {
@@ -433,11 +433,12 @@ static void draw_page_autopilot(void) {
     epaper_printf(0, 44, 2, "RUD:%+5.1f %s", g_rudder_angle, dir);
 
     const char *state_str = state_to_string((system_state_t)g_master_status.state);
+    const char *mode_str = (g_master_flags & FLAG_COG_MODE) ? "COG" : "HDG";
     float error = g_target_heading - g_heading;
     while (error > 180.0f) error -= 360.0f;
     while (error < -180.0f) error += 360.0f;
 
-    epaper_printf(0, 76, 1, "State: %s  Err: %+.1f", state_str, error);
+    epaper_printf(0, 76, 1, "%-8s %s  Err:%+6.1f", state_str, mode_str, error);
 
     if (g_master_status.fault_code != 0) {
         epaper_printf(0, 90, 1, "FAULT: 0x%02X", g_master_status.fault_code);
@@ -535,31 +536,33 @@ static void display_update(void) {
         // Smart partial update for autopilot page - each region updated individually
         ESP_LOGD(TAG, "Checking for partial display updates...");
 
-        // Define region dimensions (font size 2 = 16px height, font size 1 = 8px height)
+        // Define region dimensions (with padding for proper partial refresh)
+        // Font size 2 = 16px height + 4px padding = 20px
+        // Font size 1 = 8px height + 4px padding = 12px
         #define HDG_X       0
         #define HDG_Y       12
         #define HDG_W       168
-        #define HDG_H       16
+        #define HDG_H       20
 
         #define TGT_X       168
         #define TGT_Y       12
         #define TGT_W       128
-        #define TGT_H       16
+        #define TGT_H       20
 
         #define RUD_X       0
         #define RUD_Y       44
         #define RUD_W       200
-        #define RUD_H       16
+        #define RUD_H       20
 
         #define STATE_X     0
         #define STATE_Y     76
         #define STATE_W     296
-        #define STATE_H     8
+        #define STATE_H     12
 
         #define FAULT_X     0
         #define FAULT_Y     90
         #define FAULT_W     200
-        #define FAULT_H     8
+        #define FAULT_H     12
 
         // Check and update heading - direct partial refresh
         if (float_changed(g_heading, g_prev_display.heading)) {
@@ -588,18 +591,23 @@ static void display_update(void) {
             ESP_LOGI(TAG, "Updated RUD: %.1f", g_rudder_angle);
         }
 
-        // Check and update state/error - direct partial refresh
+        // Check and update state/mode/error - direct partial refresh
+        // Update when state, mode, heading, or target changes
+        static uint8_t prev_flags = 0;
         if (g_master_status.state != g_prev_display.master_state ||
-            float_changed(g_target_heading - g_heading,
-                         g_prev_display.target_heading - g_prev_display.heading)) {
+            (g_master_flags & FLAG_COG_MODE) != (prev_flags & FLAG_COG_MODE) ||
+            float_changed(g_heading, g_prev_display.heading) ||
+            float_changed(g_target_heading, g_prev_display.target_heading)) {
             clear_region(STATE_X, STATE_Y, STATE_W, STATE_H);
             const char *state_str = state_to_string((system_state_t)g_master_status.state);
+            const char *mode_str = (g_master_flags & FLAG_COG_MODE) ? "COG" : "HDG";
             float error = g_target_heading - g_heading;
             while (error > 180.0f) error -= 360.0f;
             while (error < -180.0f) error += 360.0f;
-            epaper_printf(STATE_X, STATE_Y, 1, "State: %s  Err: %+.1f", state_str, error);
+            epaper_printf(STATE_X, STATE_Y, 1, "%-8s %s  Err:%+6.1f", state_str, mode_str, error);
             epaper_update_partial(STATE_X, STATE_Y, STATE_W, STATE_H);
-            ESP_LOGI(TAG, "Updated State: %s, Err: %.1f", state_str, error);
+            ESP_LOGI(TAG, "Updated State: %s, Mode: %s, Err: %.1f", state_str, mode_str, error);
+            prev_flags = g_master_flags;
         }
 
         // Check and update fault code - direct partial refresh
@@ -843,17 +851,17 @@ void ui_node_init(void) {
     // ========== PHASE 3: Network ==========
     ESP_LOGI(TAG, "Initializing network...");
     esp_err_t net_err = network_manager_init(
-        CONFIG_TESTAP2_WIFI_SSID,
-        CONFIG_TESTAP2_WIFI_PASSWORD,
+        CONFIG_TESTAPEN_WIFI_SSID,
+        CONFIG_TESTAPEN_WIFI_PASSWORD,
         "testapen-ui",
-        CONFIG_TESTAP2_DEBUG_PORT
+        CONFIG_TESTAPEN_DEBUG_PORT
     );
     if (net_err != ESP_OK) {
         ESP_LOGW(TAG, "Network initialization failed (continuing without network)");
     } else {
         char ip[16];
         network_manager_get_ip(ip, sizeof(ip));
-        ESP_LOGI(TAG, "Network ready - IP: %s, Debug port: %d", ip, CONFIG_TESTAP2_DEBUG_PORT);
+        ESP_LOGI(TAG, "Network ready - IP: %s, Debug port: %d", ip, CONFIG_TESTAPEN_DEBUG_PORT);
     }
 
     // Initialize console
@@ -899,4 +907,4 @@ void ui_node_init(void) {
     ESP_LOGI(TAG, "========================================");
 }
 
-#endif // CONFIG_TESTAP2_NODE_UI
+#endif // CONFIG_TESTAPEN_NODE_UI

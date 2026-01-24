@@ -1,8 +1,8 @@
 /**
  * @file gnss_driver.c
- * @brief u-blox GNSS Driver Implementation for TestAP2
+ * @brief u-blox GNSS Driver Implementation for TestAPEN
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 10
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 10
  */
 
 #include <string.h>

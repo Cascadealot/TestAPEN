@@ -19,7 +19,7 @@
 
 #include "sdkconfig.h"
 
-#ifdef CONFIG_TESTAP2_NODE_MASTER
+#ifdef CONFIG_TESTAPEN_NODE_MASTER
 // Forward declarations for master interface functions (master_node.c)
 extern system_state_t master_get_state(void);
 extern uint8_t master_get_fault_code(void);
@@ -74,7 +74,7 @@ extern int master_gnss_get_position(float *lat, float *lon);
 extern float master_get_blended_heading(void);
 #endif
 
-#ifdef CONFIG_TESTAP2_NODE_RUDDER
+#ifdef CONFIG_TESTAPEN_NODE_RUDDER
 // Forward declarations for rudder interface functions (rudder_node.c)
 extern system_state_t rudder_get_state(void);
 extern uint8_t rudder_get_fault_code(void);
@@ -100,7 +100,7 @@ extern void rudder_get_ip_address(char *buf, size_t buf_size);
 extern const char* rudder_get_version(void);
 #endif
 
-#ifdef CONFIG_TESTAP2_NODE_UI
+#ifdef CONFIG_TESTAPEN_NODE_UI
 // Forward declarations for UI node interface functions (ui_node.c)
 extern uint8_t ui_get_state(void);
 extern uint8_t ui_get_fault_code(void);
@@ -129,7 +129,7 @@ static TickType_t g_reboot_time = 0;
  * Master Node Command Handlers
  *============================================================================*/
 
-#ifdef CONFIG_TESTAP2_NODE_MASTER
+#ifdef CONFIG_TESTAPEN_NODE_MASTER
 
 static size_t cmd_help(char *response, size_t size) {
     return snprintf(response, size,
@@ -538,18 +538,18 @@ static size_t cmd_version(char *response, size_t size) {
     return snprintf(response, size,
         "TestAPEN Master Node\r\n"
         "Version: %s\r\n"
-        "FSD: TestAP2.FSD.v1.0.0\r\n",
+        "FSD: TestAPEN.FSD.v1.0.0\r\n",
         master_get_version()
     );
 }
 
-#endif // CONFIG_TESTAP2_NODE_MASTER
+#endif // CONFIG_TESTAPEN_NODE_MASTER
 
 /*============================================================================
  * Rudder Node Command Handlers
  *============================================================================*/
 
-#ifdef CONFIG_TESTAP2_NODE_RUDDER
+#ifdef CONFIG_TESTAPEN_NODE_RUDDER
 
 static size_t cmd_help(char *response, size_t size) {
     return snprintf(response, size,
@@ -753,18 +753,18 @@ static size_t cmd_version(char *response, size_t size) {
     return snprintf(response, size,
         "TestAPEN Rudder Node\r\n"
         "Version: %s\r\n"
-        "FSD: TestAP2.FSD.v1.0.0\r\n",
+        "FSD: TestAPEN.FSD.v1.0.0\r\n",
         rudder_get_version()
     );
 }
 
-#endif // CONFIG_TESTAP2_NODE_RUDDER
+#endif // CONFIG_TESTAPEN_NODE_RUDDER
 
 /*============================================================================
  * UI Node Command Handlers
  *============================================================================*/
 
-#ifdef CONFIG_TESTAP2_NODE_UI
+#ifdef CONFIG_TESTAPEN_NODE_UI
 
 static size_t cmd_help(char *response, size_t size) {
     return snprintf(response, size,
@@ -912,7 +912,7 @@ static size_t cmd_version(char *response, size_t size) {
     return snprintf(response, size,
         "TestAPEN UI Node\r\n"
         "Version: %s\r\n"
-        "FSD: TestAP2.FSD.v1.0.0\r\n",
+        "FSD: TestAPEN.FSD.v1.0.0\r\n",
         ui_get_version()
     );
 }
@@ -975,7 +975,7 @@ static size_t cmd_buttons(char *response, size_t size) {
     return ui_get_button_states(response, size);
 }
 
-#endif // CONFIG_TESTAP2_NODE_UI
+#endif // CONFIG_TESTAPEN_NODE_UI
 
 /*============================================================================
  * Common Command Handlers
@@ -1103,7 +1103,7 @@ static size_t cmd_param_reset(char *response, size_t size) {
     }
 }
 
-#ifdef CONFIG_TESTAP2_NODE_MASTER
+#ifdef CONFIG_TESTAPEN_NODE_MASTER
 static size_t cmd_pid(const char *args, char *response, size_t size) {
     // If no args, show current PID values
     if (args == NULL || *args == '\0') {
@@ -1136,7 +1136,7 @@ static size_t cmd_pid(const char *args, char *response, size_t size) {
 }
 #endif
 
-#ifdef CONFIG_TESTAP2_NODE_RUDDER
+#ifdef CONFIG_TESTAPEN_NODE_RUDDER
 static size_t cmd_servo(const char *args, char *response, size_t size) {
     // If no args, show current servo values
     if (args == NULL || *args == '\0') {
@@ -1268,7 +1268,7 @@ size_t console_process_command(const char *cmd, char *response, size_t response_
         return cmd_espnow(response, response_size);
     }
 
-#ifdef CONFIG_TESTAP2_NODE_MASTER
+#ifdef CONFIG_TESTAPEN_NODE_MASTER
     // Master-specific commands
     else if (strcmp(cmd, "pid") == 0) {
         return cmd_pid(NULL, response, response_size);
@@ -1335,7 +1335,7 @@ size_t console_process_command(const char *cmd, char *response, size_t response_
     }
 #endif
 
-#ifdef CONFIG_TESTAP2_NODE_RUDDER
+#ifdef CONFIG_TESTAPEN_NODE_RUDDER
     // Rudder-specific commands
     else if (strcmp(cmd, "rudder") == 0) {
         return cmd_rudder(response, response_size);
@@ -1378,7 +1378,7 @@ size_t console_process_command(const char *cmd, char *response, size_t response_
     }
 #endif
 
-#ifdef CONFIG_TESTAP2_NODE_UI
+#ifdef CONFIG_TESTAPEN_NODE_UI
     // UI-specific commands
     else if (strcmp(cmd, "display") == 0) {
         return cmd_display(response, response_size);

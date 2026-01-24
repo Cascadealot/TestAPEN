@@ -1,8 +1,8 @@
 /**
  * @file state_machine.c
- * @brief State Machine Implementation for TestAP2 Autopilot
+ * @brief State Machine Implementation for TestAPEN Autopilot
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 8
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 8
  */
 
 #include "state_machine.h"

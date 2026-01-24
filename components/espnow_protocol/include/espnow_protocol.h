@@ -2,7 +2,7 @@
  * @file espnow_protocol.h
  * @brief ESP-NOW Protocol Definitions for TestAPEN
  *
- * This is a port of the CAN protocol from TestAP2 to ESP-NOW wireless.
+ * This is a port of the CAN protocol from TestAPEN to ESP-NOW wireless.
  * Message structures are identical to CAN for easy migration back.
  */
 

@@ -5,7 +5,7 @@
  * Provides runtime-configurable autopilot parameters accessible via
  * BLE, Console, and CAN. Parameters persist in NVS flash.
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 13.3
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 13.3
  */
 
 #ifndef PARAM_STORE_H

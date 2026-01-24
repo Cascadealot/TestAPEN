@@ -1,7 +1,7 @@
 # e-Paper display component - only built for UI node
 # Direct SSD1680 driver with corrected partial refresh LUT
 
-if(CONFIG_TESTAP2_NODE_UI)
+if(CONFIG_TESTAPEN_NODE_UI)
     idf_component_register(
         SRCS
             "epaper.c"

@@ -1,6 +1,6 @@
 /**
  * @file ble_manager.c
- * @brief BLE Manager Implementation for TestAP2
+ * @brief BLE Manager Implementation for TestAPEN
  *
  * Implements NimBLE GATT service with 5 characteristics:
  * - Command (Write): Accept commands from BLE client
@@ -9,7 +9,7 @@
  * - Rudder (Read/Notify): Rudder angle and motor status
  * - Parameters (Read/Write/Notify): Configurable parameters
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 11
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 11
  */
 
 #include "ble_manager.h"

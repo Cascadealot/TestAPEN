@@ -1,11 +1,11 @@
 /**
  * @file ble_manager.h
- * @brief BLE Manager for TestAP2 Autopilot
+ * @brief BLE Manager for TestAPEN Autopilot
  *
  * Implements BLE GATT service per FSD Section 11.
  * Provides control interface for autopilot via BLE.
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 11
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 11
  */
 
 #ifndef BLE_MANAGER_H
@@ -73,7 +73,7 @@ extern "C" {
  * @brief Initialize BLE manager
  *
  * Initializes NimBLE stack, creates GATT service with characteristics,
- * and starts advertising as "TestAP2".
+ * and starts advertising as "TestAPEN".
  *
  * @return ESP_OK on success
  */

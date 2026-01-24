@@ -2,7 +2,7 @@
  * @file rudder_node.c
  * @brief Rudder Node Implementation for TestAPEN
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 6.3
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 6.3
  * Modified for ESP-NOW communication instead of CAN bus.
  *
  * Rudder Node Tasks:
@@ -30,7 +30,7 @@
 #include "cmd_console.h"
 #include "param_store.h"
 
-#ifdef CONFIG_TESTAP2_NODE_RUDDER
+#ifdef CONFIG_TESTAPEN_NODE_RUDDER
 
 static const char *TAG = "RUDDER";
 
@@ -378,7 +378,7 @@ static void motor_init(void) {
     ledc_timer_config(&timer_conf);
 
     ledc_channel_config_t channel_conf = {
-        .gpio_num = CONFIG_TESTAP2_MOTOR_PWM_GPIO,
+        .gpio_num = CONFIG_TESTAPEN_MOTOR_PWM_GPIO,
         .speed_mode = LEDC_LOW_SPEED_MODE,
         .channel = LEDC_CHANNEL_0,
         .timer_sel = LEDC_TIMER_0,
@@ -389,7 +389,7 @@ static void motor_init(void) {
 
     // Configure direction GPIO
     gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << CONFIG_TESTAP2_MOTOR_DIR_GPIO),
+        .pin_bit_mask = (1ULL << CONFIG_TESTAPEN_MOTOR_DIR_GPIO),
         .mode = GPIO_MODE_OUTPUT,
         .pull_up_en = GPIO_PULLUP_DISABLE,
         .pull_down_en = GPIO_PULLDOWN_DISABLE,
@@ -400,10 +400,10 @@ static void motor_init(void) {
     // Set initial state
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, 0);
     ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
-    gpio_set_level(CONFIG_TESTAP2_MOTOR_DIR_GPIO, 0);
+    gpio_set_level(CONFIG_TESTAPEN_MOTOR_DIR_GPIO, 0);
 
     ESP_LOGI(TAG, "Motor initialized: PWM=%d, DIR=%d",
-             CONFIG_TESTAP2_MOTOR_PWM_GPIO, CONFIG_TESTAP2_MOTOR_DIR_GPIO);
+             CONFIG_TESTAPEN_MOTOR_PWM_GPIO, CONFIG_TESTAPEN_MOTOR_DIR_GPIO);
 }
 
 static void motor_stop(void) {
@@ -429,7 +429,7 @@ static void motor_drive(int speed_percent, int direction) {
     uint32_t duty = (speed_percent * 255) / 100;
 
     // Set direction (DIR LOW = port, DIR HIGH = stbd)
-    gpio_set_level(CONFIG_TESTAP2_MOTOR_DIR_GPIO, direction > 0 ? 1 : 0);
+    gpio_set_level(CONFIG_TESTAPEN_MOTOR_DIR_GPIO, direction > 0 ? 1 : 0);
 
     // Set PWM duty
     ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
@@ -740,8 +740,8 @@ static void task_network(void *pvParameters) {
 static esp_err_t i2c_init(void) {
     i2c_config_t conf = {
         .mode = I2C_MODE_MASTER,
-        .sda_io_num = CONFIG_TESTAP2_I2C_SDA_GPIO,
-        .scl_io_num = CONFIG_TESTAP2_I2C_SCL_GPIO,
+        .sda_io_num = CONFIG_TESTAPEN_I2C_SDA_GPIO,
+        .scl_io_num = CONFIG_TESTAPEN_I2C_SCL_GPIO,
         .sda_pullup_en = GPIO_PULLUP_ENABLE,
         .scl_pullup_en = GPIO_PULLUP_ENABLE,
         .master.clk_speed = 400000
@@ -825,10 +825,10 @@ void rudder_node_init(void) {
     // ========== PHASE 3: Network (takes longest) ==========
     boot_status(2, "WiFi...");
     esp_err_t net_err = network_manager_init(
-        CONFIG_TESTAP2_WIFI_SSID,
-        CONFIG_TESTAP2_WIFI_PASSWORD,
+        CONFIG_TESTAPEN_WIFI_SSID,
+        CONFIG_TESTAPEN_WIFI_PASSWORD,
         "testapen-rudder",
-        CONFIG_TESTAP2_DEBUG_PORT
+        CONFIG_TESTAPEN_DEBUG_PORT
     );
     if (net_err != ESP_OK) {
         boot_status(2, "WiFi: FAIL");
@@ -837,7 +837,7 @@ void rudder_node_init(void) {
         char ip[16];
         network_manager_get_ip(ip, sizeof(ip));
         boot_status(2, "WiFi: %s", ip);
-        ESP_LOGI(TAG, "Network ready - IP: %s, Debug port: %d", ip, CONFIG_TESTAP2_DEBUG_PORT);
+        ESP_LOGI(TAG, "Network ready - IP: %s, Debug port: %d", ip, CONFIG_TESTAPEN_DEBUG_PORT);
     }
 
     // Initialize console
@@ -923,4 +923,4 @@ void rudder_node_init(void) {
     ESP_LOGI(TAG, "========================================");
 }
 
-#endif // CONFIG_TESTAP2_NODE_RUDDER
+#endif // CONFIG_TESTAPEN_NODE_RUDDER

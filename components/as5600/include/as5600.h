@@ -2,7 +2,7 @@
  * @file as5600.h
  * @brief AS5600 Magnetic Rotary Encoder Driver for ESP-IDF
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 4.2, 9.3
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 4.2, 9.3
  *
  * Features:
  * - 12-bit angle measurement (0-4095 counts = 0-360 degrees)

@@ -1,6 +1,6 @@
 /**
  * @file cmd_console.h
- * @brief Debug Console Command Handler for TestAP2
+ * @brief Debug Console Command Handler for TestAPEN
  */
 
 #ifndef CMD_CONSOLE_H

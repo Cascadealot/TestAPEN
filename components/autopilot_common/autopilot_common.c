@@ -1,6 +1,6 @@
 /**
  * @file autopilot_common.c
- * @brief Common utility functions for TestAP2 Autopilot
+ * @brief Common utility functions for TestAPEN Autopilot
  */
 
 #include "autopilot_common.h"

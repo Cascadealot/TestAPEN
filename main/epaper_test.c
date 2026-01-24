@@ -13,7 +13,7 @@
  *   ep update    - Refresh display
  *   ep test      - Run test pattern
  *
- * Build: Enable CONFIG_TESTAP2_EPAPER_TEST in menuconfig
+ * Build: Enable CONFIG_TESTAPEN_EPAPER_TEST in menuconfig
  */
 
 #include <stdio.h>
@@ -358,10 +358,10 @@ void app_main(void) {
     // Initialize network (WiFi + OTA + telnet)
     ESP_LOGI(TAG, "Initializing network...");
     ret = network_manager_init(
-        CONFIG_TESTAP2_WIFI_SSID,
-        CONFIG_TESTAP2_WIFI_PASSWORD,
+        CONFIG_TESTAPEN_WIFI_SSID,
+        CONFIG_TESTAPEN_WIFI_PASSWORD,
         "testapen-epaper-test",
-        CONFIG_TESTAP2_DEBUG_PORT
+        CONFIG_TESTAPEN_DEBUG_PORT
     );
     if (ret != ESP_OK) {
         ESP_LOGW(TAG, "Network init failed: %s (continuing anyway)", esp_err_to_name(ret));

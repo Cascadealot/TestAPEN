@@ -1,8 +1,8 @@
 # TestAPEN Main Component CMakeLists.txt
-# Fork of TestAP2 using ESP-NOW instead of CAN bus
+# Fork of TestAPEN using ESP-NOW instead of CAN bus
 
 # Check if e-Paper test mode is enabled
-if(CONFIG_TESTAP2_EPAPER_TEST)
+if(CONFIG_TESTAPEN_EPAPER_TEST)
     # Minimal test mode - only e-Paper partial refresh test
     set(MAIN_SRCS "epaper_test.c")
 else()

@@ -750,9 +750,9 @@ sleep 1
 **Method:** Bluetooth scan
 ```bash
 bluetoothctl scan on
-# Look for "TestAP2" device
+# Look for "TestAPEN" device
 ```
-**Pass Criteria:** Device "TestAP2" appears in scan
+**Pass Criteria:** Device "TestAPEN" appears in scan
 
 ### BLE-02: BLE Connect
 **Purpose:** Verify BLE connection

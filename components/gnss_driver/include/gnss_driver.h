@@ -1,8 +1,8 @@
 /**
  * @file gnss_driver.h
- * @brief u-blox GNSS Driver for TestAP2
+ * @brief u-blox GNSS Driver for TestAPEN
  *
- * FSD Reference: TestAP2.FSD.v1.0.0.md Section 10
+ * FSD Reference: TestAPEN.FSD.v1.0.0.md Section 10
  *
  * Supports u-blox M8/M9/M10 series GNSS modules via UART.
  * Uses UBX protocol for NAV-PVT messages at 10Hz.

@@ -479,7 +479,7 @@ bool param_is_local(param_id_t id)
         return false;
     }
 
-#ifdef CONFIG_TESTAP2_NODE_MASTER
+#ifdef CONFIG_TESTAPEN_NODE_MASTER
     return s_param_meta[id].is_master_param;
 #else
     return !s_param_meta[id].is_master_param;

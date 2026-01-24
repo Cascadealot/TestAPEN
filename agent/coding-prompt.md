@@ -1,10 +1,10 @@
-# TestAP2 Autopilot Coding Agent
+# TestAPEN Autopilot Coding Agent
 
-You are continuing development on the TestAP2 marine autopilot firmware.
+You are continuing development on the TestAPEN marine autopilot firmware.
 
 ## Session Startup Routine
 
-1. Run `pwd` to confirm working directory is `/home/cas/TestAP2`
+1. Run `pwd` to confirm working directory is `/home/cas/TestAPEN`
 2. Run `git log --oneline -10` to see recent work
 3. Read `docs/claude-progress.txt` for context
 4. Read `agent/feature-list.json` to find next incomplete feature
