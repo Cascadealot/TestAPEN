@@ -81,6 +81,7 @@ static uint16_t g_last_raw = 0;              // Previous raw reading for wrap de
 static int32_t g_center_position = 0;        // Boot position (virtual counts)
 static int32_t g_current_position = 0;       // Current position (virtual counts)
 static bool g_calibration_valid = true;      // Auto-calibrated at boot
+static bool g_as5600_available = false;      // AS5600 initialized successfully
 
 // Motor state
 static bool g_motor_enabled = false;
@@ -614,17 +615,19 @@ static void task_rudder(void *pvParameters) {
     static float last_speed = 0.0f;
 
     while (1) {
-        // Read encoder via I2C
-        as5600_data_t encoder_data;
-        esp_err_t enc_err = as5600_update(&encoder_data);
-        if (enc_err == ESP_OK && encoder_data.valid) {
-            update_multi_turn_position(encoder_data.raw_angle);
-            g_actual_angle = position_to_rudder_angle();
-        } else if (enc_err != ESP_OK) {
-            ESP_LOGE(TAG, "AS5600 read failed: %s", esp_err_to_name(enc_err));
-            if (!encoder_data.status.magnet_detected) {
-                state_machine_set_fault(&g_state_machine, ERR_SENSOR_FAULT);
-                motor_stop();
+        // Only read encoder if AS5600 was initialized successfully
+        if (g_as5600_available) {
+            as5600_data_t encoder_data;
+            esp_err_t enc_err = as5600_update(&encoder_data);
+            if (enc_err == ESP_OK && encoder_data.valid) {
+                update_multi_turn_position(encoder_data.raw_angle);
+                g_actual_angle = position_to_rudder_angle();
+            } else if (enc_err != ESP_OK) {
+                ESP_LOGE(TAG, "AS5600 read failed: %s", esp_err_to_name(enc_err));
+                if (!encoder_data.status.magnet_detected) {
+                    state_machine_set_fault(&g_state_machine, ERR_SENSOR_FAULT);
+                    motor_stop();
+                }
             }
         }
 
@@ -840,38 +843,12 @@ void rudder_node_init(void) {
         ESP_LOGI(TAG, "Network ready - IP: %s, Debug port: %d", ip, CONFIG_TESTAPEN_DEBUG_PORT);
     }
 
-    // Initialize console
+    // Initialize console (critical for debug access)
     console_init();
     network_manager_set_command_callback(console_process_command);
+    ESP_LOGI(TAG, "Console initialized - telnet debug available");
 
-    // ========== PHASE 4: AS5600 Encoder ==========
-    boot_status(3, "AS5600...");
-    esp_err_t as5600_err = as5600_init(I2C_NUM_0, g_i2c_mutex);
-    if (as5600_err != ESP_OK) {
-        boot_status(3, "AS5600: FAIL");
-        ESP_LOGE(TAG, "AS5600 initialization failed: %s", esp_err_to_name(as5600_err));
-        state_machine_set_fault(&g_state_machine, ERR_SENSOR_INIT);
-        if (g_display_available) {
-            ssd1306_printf(2, "SENSOR FAULT");
-            ssd1306_update();
-        }
-        return;
-    }
-    boot_status(3, "AS5600: OK");
-    ESP_LOGI(TAG, "AS5600 encoder initialized");
-
-    // Initialize multi-turn tracking
-    uint16_t initial_raw = 0;
-    if (as5600_read_raw_angle(&initial_raw) == ESP_OK) {
-        init_multi_turn_tracking(initial_raw);
-        ESP_LOGI(TAG, "Auto-calibration: boot position=%u assumed center", initial_raw);
-    } else {
-        ESP_LOGE(TAG, "Failed to read initial encoder position!");
-        state_machine_set_fault(&g_state_machine, ERR_SENSOR_FAULT);
-        return;
-    }
-
-    // ========== PHASE 5: ESP-NOW ==========
+    // ========== PHASE 4: ESP-NOW (before sensors - always available) ==========
     boot_status(3, "ESP-NOW...");
     if (espnow_init() != ESP_OK) {
         boot_status(3, "ESP-NOW: FAIL");
@@ -882,26 +859,57 @@ void rudder_node_init(void) {
         espnow_register_recv_callback(espnow_message_handler);
     }
 
-    // ========== PHASE 6: Motor ==========
+    // ========== PHASE 5: Motor Driver (before sensor - can init without feedback) ==========
     boot_status(3, "Motor...");
     motor_init();
-    g_motor_enabled = true;
+    // Note: g_motor_enabled set after AS5600 check - motor won't run without valid sensor
     boot_status(3, "Motor: OK");
 
-    // ========== PHASE 7: Summary Screen ==========
+    // ========== PHASE 6: AS5600 Encoder (last hardware - failures don't block OTA/debug) ==========
+    boot_status(3, "AS5600...");
+    esp_err_t as5600_err = as5600_init(I2C_NUM_0, g_i2c_mutex);
+    if (as5600_err != ESP_OK) {
+        boot_status(3, "AS5600: FAIL");
+        ESP_LOGE(TAG, "AS5600 initialization failed: %s", esp_err_to_name(as5600_err));
+        state_machine_set_fault(&g_state_machine, ERR_SENSOR_INIT);
+        g_as5600_available = false;
+        // Continue - OTA and debug still available
+    } else {
+        boot_status(3, "AS5600: OK");
+        ESP_LOGI(TAG, "AS5600 encoder initialized");
+        g_as5600_available = true;
+
+        // Initialize multi-turn tracking (only if AS5600 available)
+        uint16_t initial_raw = 0;
+        if (as5600_read_raw_angle(&initial_raw) == ESP_OK) {
+            init_multi_turn_tracking(initial_raw);
+            ESP_LOGI(TAG, "Auto-calibration: boot position=%u assumed center", initial_raw);
+            g_motor_enabled = true;  // Only enable motor if sensor is working
+        } else {
+            ESP_LOGE(TAG, "Failed to read initial encoder position!");
+            state_machine_set_fault(&g_state_machine, ERR_SENSOR_FAULT);
+            g_as5600_available = false;
+        }
+    }
+
+    // ========== PHASE 8: Summary Screen ==========
     if (g_display_available) {
         ssd1306_clear();
         ssd1306_printf(0, "TestAPEN Rudder");
-        ssd1306_printf(1, "All systems OK");
+        if (g_state_machine.fault_code != 0) {
+            ssd1306_printf(1, "FAULT: %d", g_state_machine.fault_code);
+        } else {
+            ssd1306_printf(1, "All systems OK");
+        }
         char ip[16];
         network_manager_get_ip(ip, sizeof(ip));
         ssd1306_printf(2, "%s", ip);
-        ssd1306_printf(3, "Starting...");
+        ssd1306_printf(3, "OTA ready");
         ssd1306_update();
         vTaskDelay(pdMS_TO_TICKS(1500));
     }
 
-    // ========== PHASE 8: Create Tasks ==========
+    // ========== PHASE 9: Create Tasks (always, even if faulted) ==========
     xTaskCreate(task_espnow, "Task_ESPNOW", TASK_CAN_STACK_SIZE,
                 NULL, TASK_CAN_PRIORITY, &h_task_espnow);
 

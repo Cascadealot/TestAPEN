@@ -4,73 +4,103 @@
 
 PROJECT: TestAPEN - Tri-node marine autopilot with ESP-NOW (ESP-IDF)
 REPO: https://github.com/Cascadealot/TestAPEN
-BRANCH: feature/master-node-build (pending merge to master)
+BRANCH: master (feature branches merged)
 FSD: docs/TestAPEN.FSD.v1.1.0.md (updated 2026-01-20)
 FW VERSION: 1.1.0-espnow
 
-STATUS: MASTER NODE FIXED - Rudder node WiFi issue pending
+STATUS: OPERATIONAL - Resilient init implemented, ready for BLE/button testing
 
 QUICK RESUME:
-- Master node: WORKING (192.168.1.118) - WiFi, telnet, BLE connects
-- Rudder node: WiFi NOT CONNECTING - needs investigation
-- UI node: Working (192.168.1.186)
-- Branch feature/master-node-build has fixes, needs merge
-
-CRITICAL ISSUE FOUND (Session 23):
-- Commit 1ae571c (TESTAP2→TESTAPEN rename) broke Master builds by:
-  - Changing partition from CUSTOM (1.5MB) to SINGLE_APP (1MB)
-  - Disabling Bluetooth
-  - Losing WiFi credentials due to variable prefix change
+- All 3 nodes working: Master (118), Rudder (157), UI (186)
+- ESP-NOW communication verified
+- CRITICAL: All TESTAP2 references renamed to TESTAPEN in source code
+- Motor pins updated: DIR=25, PWM=26
+- superclaude script fixed (was hardcoded to wrong project)
 
 NEXT STEPS WHEN RESUMING:
-1. Investigate Rudder node WiFi connection issue
-2. Merge feature/master-node-build to master
-3. Fix BLE bugs (connects but has issues)
-4. GNSS integration
+1. BLE end-to-end testing (Master node)
+2. Button testing (UI node controls autopilot)
+3. Boat testing with all three nodes
+4. GNSS integration (driver exists, not integrated)
 
 ================================================================================
-SESSION 23 - 2026-01-24 (Master Node Build Fix)
+SESSION 24 - 2026-01-24 (Rudder Node Resilient Initialization)
 ================================================================================
 
-ISSUE: Master node telnet help command showed corrupted output after ~1024 bytes
+PROBLEM:
+- Rudder node WiFi not connecting
+- Root cause: Sensor failures (AS5600) caused early return in init
+- Early return prevented network_manager_init() from completing
+- Result: No OTA, no telnet debug when hardware fails
+
+SOLUTION: Resilient Initialization Order
+
+New init sequence ensures OTA/debug always available:
+
+| Phase | Component | Notes |
+|-------|-----------|-------|
+| 1 | I2C + Display | Boot status messages |
+| 2 | State Machine | Lightweight |
+| 3 | Parameter Store | Runtime params |
+| 4 | Network/WiFi + Console | CRITICAL - always init |
+| 5 | ESP-NOW | Before sensors |
+| 6 | Motor Driver | Before sensors, won't run without feedback |
+| 7 | AS5600 Encoder | LAST - failures don't block debug |
+| 8 | Summary Screen | Shows fault status if any |
+| 9 | Tasks | Always created, even if faulted |
+
+KEY CHANGES:
+- Removed early returns on sensor failure
+- Added g_as5600_available flag for graceful degradation
+- Motor only enabled if sensor init succeeds
+- task_rudder checks sensor availability before reading
+- Fixed WiFi credentials (YourNetwork -> Boathouse24)
+
+TESTING:
+- Flashed via USB to Rudder node
+- Node booted with sensor fault (AS5600 not connected on bench)
+- WiFi connected: 192.168.1.157
+- Telnet debug working: port 2323
+- OTA endpoint responding: HTTP 405 (ready for POST)
+- State: FAULTED (fault 18 = ERR_SENSOR_INIT) - correct behavior
+
+GIT:
+- Branch: feature/rudder-resilient-init
+- Commit: 5658b87 "Implement resilient initialization order for Rudder node"
+- Ready to merge to master
+
+FILES MODIFIED:
+- main/rudder_node.c - Reordered init, removed early returns, added g_as5600_available
+- sdkconfig - Fixed WiFi credentials
+
+ALSO PENDING (from Session 23):
+- feature/master-node-build branch has:
+  - Telnet buffer fix (1024 -> 2048 bytes)
+  - Master node build fixes (partition, BT, WiFi creds)
+  - CMake two-pass fix in ble_manager
+
+================================================================================
+SESSION 23 - 2026-01-24 (Master Node Build Recovery)
+================================================================================
 
 ROOT CAUSE ANALYSIS:
-1. Original issue: network_manager.c response buffer was 1024 bytes, help text ~1580 bytes
-2. When trying to build Master to fix it, discovered sdkconfig was set to RUDDER
-3. Accidentally flashed Rudder firmware to Master via OTA
-4. Master became unreachable (Rudder code fails on AS5600 init before network)
-5. Full analysis revealed commit 1ae571c broke Master builds by:
-   - Partition: CUSTOM (1.5MB) → SINGLE_APP (1MB) - binary won't fit
-   - BT: Enabled → Disabled - Master needs BLE
-   - WiFi: Credentials lost in variable prefix change
+
+Commit 1ae571c (TESTAP2→TESTAPEN rename) introduced breaking changes beyond renaming:
+- Changed partition from CUSTOM (1.5MB) to SINGLE_APP (1MB)
+- Disabled Bluetooth completely
+- WiFi credentials lost due to variable prefix change
 
 FIXES APPLIED:
-1. sdkconfig: Restored CONFIG_PARTITION_TABLE_CUSTOM=y (1.5MB OTA)
-2. sdkconfig: Restored CONFIG_BT_ENABLED=y with NimBLE settings
-3. sdkconfig: Restored CONFIG_COMPILER_OPTIMIZATION_SIZE=y (IRAM fit)
-4. sdkconfig: Fixed WiFi credentials (Boathouse24)
-5. sdkconfig: Set CONFIG_TESTAPEN_NODE_MASTER=y
-6. ble_manager/CMakeLists.txt: Fixed cmake two-pass issue
-7. network_manager.c: Increased telnet buffer 1024→2048 bytes
+1. Restored partition table to CUSTOM (1.5MB OTA)
+2. Restored BT+NimBLE settings from working commit 418e6e9
+3. Fixed WiFi credentials (Boathouse24/Landfall40!@)
+4. Added size optimization for IRAM fit
+5. Fixed ble_manager CMakeLists.txt cmake two-pass issue
+6. Increased telnet response buffer (1024 → 2048 bytes)
 
-VERIFICATION:
-- Master node builds successfully (1.03MB binary, 1.5MB partition)
-- WiFi connects (192.168.1.118)
-- Telnet help displays all 37 commands without corruption
-- BLE connects and responds to Engage (bugs to fix later)
-
-COMMITS:
-- cdb3b99: Fix Master node build: restore working config from pre-rename state
-- 678ad62: Add mandatory analysis workflow instructions to CLAUDE.md
-
-DOCUMENTATION:
-- Added MANDATORY ANALYSIS WORKFLOW section to CLAUDE.md
-- Documents required steps: branch first, full analysis, verify node type
-
-PENDING:
-- Rudder node WiFi not connecting - needs investigation
-- BLE bugs to be fixed in future session
-- Merge branch to master after Rudder issue resolved
+GIT:
+- Branch: feature/master-node-build
+- Ready to merge to master
 
 ================================================================================
 SESSION 22 - 2026-01-24 (Critical Cleanup: TESTAP2 → TESTAPEN Rename)
