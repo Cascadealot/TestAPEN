@@ -532,62 +532,106 @@ static void display_update(void) {
         epaper_update();
 
     } else if (g_current_page == PAGE_AUTOPILOT) {
-        // Smart partial update for autopilot page
-        ESP_LOGI(TAG, "Partial display update...");
-        bool any_change = false;
+        // Smart partial update for autopilot page - each region updated individually
+        ESP_LOGD(TAG, "Checking for partial display updates...");
 
-        // Check and update heading (font size 2 = 16px height, ~10 chars wide)
+        // Define region dimensions (font size 2 = 16px height, font size 1 = 8px height)
+        #define HDG_X       0
+        #define HDG_Y       12
+        #define HDG_W       168
+        #define HDG_H       16
+
+        #define TGT_X       168
+        #define TGT_Y       12
+        #define TGT_W       128
+        #define TGT_H       16
+
+        #define RUD_X       0
+        #define RUD_Y       44
+        #define RUD_W       200
+        #define RUD_H       16
+
+        #define STATE_X     0
+        #define STATE_Y     76
+        #define STATE_W     296
+        #define STATE_H     8
+
+        #define FAULT_X     0
+        #define FAULT_Y     90
+        #define FAULT_W     200
+        #define FAULT_H     8
+
+        // Check and update heading - direct partial refresh
         if (float_changed(g_heading, g_prev_display.heading)) {
-            clear_region(0, 12, 168, 20);  // Clear HDG area
-            epaper_printf(0, 12, 2, "HDG:%5.1f", g_heading);
-            any_change = true;
+            clear_region(HDG_X, HDG_Y, HDG_W, HDG_H);
+            epaper_printf(HDG_X, HDG_Y, 2, "HDG:%5.1f", g_heading);
+            epaper_update_partial(HDG_X, HDG_Y, HDG_W, HDG_H);
+            ESP_LOGI(TAG, "Updated HDG: %.1f", g_heading);
         }
 
-        // Check and update target heading
+        // Check and update target heading - direct partial refresh
         if (float_changed(g_target_heading, g_prev_display.target_heading)) {
-            clear_region(168, 12, 128, 20);  // Clear TGT area
-            epaper_printf(168, 12, 2, "TGT:%5.1f", g_target_heading);
-            any_change = true;
+            clear_region(TGT_X, TGT_Y, TGT_W, TGT_H);
+            epaper_printf(TGT_X, TGT_Y, 2, "TGT:%5.1f", g_target_heading);
+            epaper_update_partial(TGT_X, TGT_Y, TGT_W, TGT_H);
+            ESP_LOGI(TAG, "Updated TGT: %.1f", g_target_heading);
         }
 
-        // Check and update rudder angle
+        // Check and update rudder angle - direct partial refresh
         if (float_changed(g_rudder_angle, g_prev_display.rudder_angle)) {
-            clear_region(0, 44, 200, 20);  // Clear RUD area
+            clear_region(RUD_X, RUD_Y, RUD_W, RUD_H);
             const char *dir = "";
             if (g_rudder_angle > 0.5f) dir = "STBD";
             else if (g_rudder_angle < -0.5f) dir = "PORT";
-            epaper_printf(0, 44, 2, "RUD:%+5.1f %s", g_rudder_angle, dir);
-            any_change = true;
+            epaper_printf(RUD_X, RUD_Y, 2, "RUD:%+5.1f %s", g_rudder_angle, dir);
+            epaper_update_partial(RUD_X, RUD_Y, RUD_W, RUD_H);
+            ESP_LOGI(TAG, "Updated RUD: %.1f", g_rudder_angle);
         }
 
-        // Check and update state
+        // Check and update state/error - direct partial refresh
         if (g_master_status.state != g_prev_display.master_state ||
             float_changed(g_target_heading - g_heading,
                          g_prev_display.target_heading - g_prev_display.heading)) {
-            clear_region(0, 76, 296, 12);  // Clear state/error area
+            clear_region(STATE_X, STATE_Y, STATE_W, STATE_H);
             const char *state_str = state_to_string((system_state_t)g_master_status.state);
             float error = g_target_heading - g_heading;
             while (error > 180.0f) error -= 360.0f;
             while (error < -180.0f) error += 360.0f;
-            epaper_printf(0, 76, 1, "State: %s  Err: %+.1f", state_str, error);
-            any_change = true;
+            epaper_printf(STATE_X, STATE_Y, 1, "State: %s  Err: %+.1f", state_str, error);
+            epaper_update_partial(STATE_X, STATE_Y, STATE_W, STATE_H);
+            ESP_LOGI(TAG, "Updated State: %s, Err: %.1f", state_str, error);
         }
 
-        // Check and update fault code
+        // Check and update fault code - direct partial refresh
         if (g_master_status.fault_code != g_prev_display.fault_code) {
-            clear_region(0, 90, 200, 12);  // Clear fault area
+            clear_region(FAULT_X, FAULT_Y, FAULT_W, FAULT_H);
             if (g_master_status.fault_code != 0) {
-                epaper_printf(0, 90, 1, "FAULT: 0x%02X", g_master_status.fault_code);
+                epaper_printf(FAULT_X, FAULT_Y, 1, "FAULT: 0x%02X", g_master_status.fault_code);
             }
-            any_change = true;
+            epaper_update_partial(FAULT_X, FAULT_Y, FAULT_W, FAULT_H);
+            ESP_LOGI(TAG, "Updated Fault: 0x%02X", g_master_status.fault_code);
         }
 
-        if (any_change) {
-            // Use partial refresh for changed regions
-            epaper_update_dirty();
-        } else {
-            ESP_LOGI(TAG, "No display changes detected");
-        }
+        #undef HDG_X
+        #undef HDG_Y
+        #undef HDG_W
+        #undef HDG_H
+        #undef TGT_X
+        #undef TGT_Y
+        #undef TGT_W
+        #undef TGT_H
+        #undef RUD_X
+        #undef RUD_Y
+        #undef RUD_W
+        #undef RUD_H
+        #undef STATE_X
+        #undef STATE_Y
+        #undef STATE_W
+        #undef STATE_H
+        #undef FAULT_X
+        #undef FAULT_Y
+        #undef FAULT_W
+        #undef FAULT_H
     } else {
         // Other pages - do full redraw for now
         ESP_LOGI(TAG, "Full display update (page %d)...", g_current_page);
