@@ -370,8 +370,8 @@ CONFIG_TESTAPEN_MOTOR_EN_GPIO=27
 #
 # Network Configuration
 #
-CONFIG_TESTAPEN_WIFI_SSID="YourNetwork"
-CONFIG_TESTAPEN_WIFI_PASSWORD="YourPassword"
+CONFIG_TESTAPEN_WIFI_SSID="Boathouse24"
+CONFIG_TESTAPEN_WIFI_PASSWORD="Landfall40!@"
 CONFIG_TESTAPEN_DEBUG_PORT=2323
 # end of Network Configuration
 # end of TestAPEN Configuration
